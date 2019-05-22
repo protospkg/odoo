@@ -8,15 +8,15 @@ class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
     module_procurement_jit = fields.Selection([
-        (1, 'Immediately after sales order confirmation'),
-        (0, 'Manually or based on automatic scheduler')
-        ], "Reservation",
+        ('1', 'Immediately after sales order confirmation'),
+        ('0', 'Manually or based on automatic scheduler')
+        ], "Reservation", default='0',
         help="Reserving products manually in delivery orders or by running the scheduler is advised to better manage priorities in case of long customer lead times or/and frequent stock-outs.")
     module_product_expiry = fields.Boolean("Expiration Dates",
         help="Track following dates on lots & serial numbers: best before, removal, end of life, alert. \n Such dates are set automatically at lot/serial number creation based on values set on the product (in days).")
     group_stock_production_lot = fields.Boolean("Lots & Serial Numbers",
         implied_group='stock.group_production_lot')
-    group_lot_on_delivery_slip = fields.Boolean("Display Lots & Serial Numbers",
+    group_lot_on_delivery_slip = fields.Boolean("Display Lots & Serial Numbers on Delivery Slips",
         implied_group='stock.group_lot_on_delivery_slip')
     group_stock_tracking_lot = fields.Boolean("Delivery Packages",
         implied_group='stock.group_tracking_lot')
@@ -92,3 +92,11 @@ class ResConfigSettings(models.TransientModel):
                 ('delivery_steps', '=', 'ship_only')])
             active = False
         warehouses.mapped('int_type_id').write({'active': active})
+
+    def execute(self):
+        res = super(ResConfigSettings, self).execute()
+        self.ensure_one()
+        if self.group_stock_multi_locations or self.group_stock_production_lot or self.group_stock_tracking_lot:
+            picking_types = self.env['stock.picking.type'].with_context(active_test=False).search([('show_operations', '=', False)])
+            picking_types.write({'show_operations': True})
+        return res

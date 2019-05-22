@@ -19,20 +19,20 @@ var createViewer = function (params) {
     var viewer = new DocumentViewer(parent, params.attachments, params.attachmentID);
 
     var mockRPC = function (route) {
-        if (route === '/web/static/lib/pdfjs/web/viewer.html?file=/web/content/1') {
-            return $.when();
+        if (route === '/web/static/lib/pdfjs/web/viewer.html?file=/web/content/1?model%3Dir.attachment') {
+            return Promise.resolve();
         }
         if (route === 'https://www.youtube.com/embed/FYqW0Gdwbzk') {
-            return $.when();
+            return Promise.resolve();
         }
-        if (route === '/web/content/4') {
-            return $.when();
+        if (route === '/web/content/4?model%3Dir.attachment') {
+            return Promise.resolve();
         }
-        if (route === '/web/image/6?unique=1&signature=999') {
-            return $.when();
+        if (route === '/web/image/6?unique=1&signature=999&model=ir.attachment') {
+            return Promise.resolve();
         }
     };
-    testUtils.addMockEnvironment(parent, {
+    testUtils.mock.addMockEnvironment(parent, {
         mockRPC: function () {
             if (params.mockRPC) {
                 var _super = this._super;
@@ -51,14 +51,15 @@ var createViewer = function (params) {
         $target = $('body');
         $target.addClass('debug');
     }
-    viewer.appendTo($target);
 
     // actually destroy the parent when the viewer is destroyed
     viewer.destroy = function () {
         delete viewer.destroy;
         parent.destroy();
     };
-    return viewer;
+    return viewer.appendTo($target).then(function() {
+        return viewer;
+    });
 };
 
 QUnit.module('DocumentViewer', {
@@ -74,69 +75,37 @@ QUnit.module('DocumentViewer', {
     },
 }, function () {
 
-    QUnit.test('basic rendering', function (assert) {
+    QUnit.test('basic rendering', async function (assert) {
         assert.expect(7);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 1,
             attachments: this.attachments,
         });
 
-        assert.strictEqual(viewer.$('.o_viewer_content').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_content',
             "there should be a preview");
-        assert.strictEqual(viewer.$('.o_close_btn').length, 1,
+        assert.containsOnce(viewer, '.o_close_btn',
             "there should be a close button");
-        assert.strictEqual(viewer.$('.o_viewer-header').length, 1,
+        assert.containsOnce(viewer, '.o_viewer-header',
             "there should be a header");
-        assert.strictEqual(viewer.$('.o_image_caption').length, 1,
+        assert.containsOnce(viewer, '.o_image_caption',
             "there should be an image caption");
-        assert.strictEqual(viewer.$('.o_viewer_zoomer').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_zoomer',
             "there should be a zoomer");
-        assert.strictEqual(viewer.$('.fa-chevron-right').length, 1,
+        assert.containsOnce(viewer, '.fa-chevron-right',
             "there should be a right nav icon");
-        assert.strictEqual(viewer.$('.fa-chevron-left').length, 1,
+        assert.containsOnce(viewer, '.fa-chevron-left',
             "there should be a left nav icon");
 
         viewer.destroy();
     });
 
-    QUnit.test('Document Viewer PDF', function (assert) {
-        assert.expect(6);
-
-        var viewer = createViewer({
-            attachmentID: 1,
-            attachments: this.attachments,
-            mockRPC: function (route, args) {
-                if (args.method === 'split_pdf') {
-                    assert.deepEqual(args.args, [1, "", false], "should have the right arguments");
-                    return $.when();
-                }
-                return this._super.apply(this, arguments);
-            },
-            intercepts: {
-                document_viewer_attachment_changed: function () {
-                    assert.ok(true, "should trigger document_viewer_attachment_changed event");
-                }
-            },
-        });
-
-        assert.strictEqual(viewer.$('.o_page_number_input').length, 1,
-            "pdf should have a page input");
-        assert.strictEqual(viewer.$('.o_remainder_input').length, 1,
-            "pdf should have a remainder checkbox");
-        assert.strictEqual(viewer.$('.o_split_btn').length, 1,
-            "pdf should have a split button");
-
-        viewer.$('.o_split_btn').click();
-
-        assert.ok(viewer.isDestroyed(), 'viewer should be destroyed');
-    });
-
-    QUnit.test('Document Viewer Youtube', function (assert) {
+    QUnit.test('Document Viewer Youtube', async function (assert) {
         assert.expect(3);
 
         var youtubeURL = 'https://www.youtube.com/embed/FYqW0Gdwbzk';
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 2,
             attachments: this.attachments,
             mockRPC: function (route) {
@@ -149,94 +118,113 @@ QUnit.module('DocumentViewer', {
 
         assert.strictEqual(viewer.$(".o_image_caption:contains('urlYoutubeName')").length, 1,
             "the viewer should be on the right attachment");
-        assert.strictEqual(viewer.$('.o_viewer_text[data-src="' + youtubeURL + '"]').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_text[data-src="' + youtubeURL + '"]',
             "there should be a video player");
 
         viewer.destroy();
     });
 
-    QUnit.test('Document Viewer html/(txt)', function (assert) {
+    QUnit.test('Document Viewer html/(txt)', async function (assert) {
         assert.expect(2);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 4,
             attachments: this.attachments,
         });
 
         assert.strictEqual(viewer.$(".o_image_caption:contains('text.html')").length, 1,
             "the viewer be on the right attachment");
-        assert.strictEqual(viewer.$('iframe[data-src="/web/content/4"]').length, 1,
+        assert.containsOnce(viewer, 'iframe[data-src="/web/content/4?model%3Dir.attachment"]',
             "there should be an iframe with the right src");
 
         viewer.destroy();
     });
 
-    QUnit.test('Document Viewer mp4', function (assert) {
+    QUnit.test('Document Viewer mp4', async function (assert) {
         assert.expect(2);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 5,
             attachments: this.attachments,
         });
 
         assert.strictEqual(viewer.$(".o_image_caption:contains('video.mp4')").length, 1,
             "the viewer be on the right attachment");
-        assert.strictEqual(viewer.$('.o_viewer_video').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_video',
             "there should be a video player");
 
         viewer.destroy();
     });
 
-    QUnit.test('Document Viewer jpg', function (assert) {
+    QUnit.test('Document Viewer jpg', async function (assert) {
         assert.expect(2);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 6,
             attachments: this.attachments,
         });
 
         assert.strictEqual(viewer.$(".o_image_caption:contains('image.jpg')").length, 1,
             "the viewer be on the right attachment");
-        assert.strictEqual(viewer.$('img[data-src="/web/image/6?unique=1&signature=999"]').length, 1,
+        assert.containsOnce(viewer, 'img[data-src="/web/image/6?unique=1&signature=999&model=ir.attachment"]',
             "there should be a video player");
 
         viewer.destroy();
     });
 
-    QUnit.test('is closable by button', function (assert) {
+    QUnit.test('is closable by button', async function (assert) {
         assert.expect(3);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 6,
             attachments: this.attachments,
         });
 
-        assert.strictEqual(viewer.$('.o_viewer_content').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_content',
             "should have a document viewer");
-        assert.strictEqual(viewer.$('.o_close_btn').length, 1,
+        assert.containsOnce(viewer, '.o_close_btn',
             "should have a close button");
 
-        viewer.$('.o_close_btn').click();
+        await testUtils.dom.click(viewer.$('.o_close_btn'));
 
         assert.ok(viewer.isDestroyed(), 'viewer should be destroyed');
     });
 
-    QUnit.test('is closable by clicking on the wrapper', function (assert) {
+    QUnit.test('is closable by clicking on the wrapper', async function (assert) {
         assert.expect(3);
 
-        var viewer = createViewer({
+        var viewer = await createViewer({
             attachmentID: 6,
             attachments: this.attachments,
         });
 
-        assert.strictEqual(viewer.$('.o_viewer_content').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_content',
             "should have a document viewer");
-        assert.strictEqual(viewer.$('.o_viewer_img_wrapper').length, 1,
+        assert.containsOnce(viewer, '.o_viewer_img_wrapper',
             "should have a wrapper");
 
-        viewer.$('.o_viewer_img_wrapper').click();
+        await testUtils.dom.click(viewer.$('.o_viewer_img_wrapper'));
 
         assert.ok(viewer.isDestroyed(), 'viewer should be destroyed');
     });
+
+    QUnit.test('fileType and integrity test', async function (assert) {
+        assert.expect(3);
+
+        var viewer = await createViewer({
+            attachmentID: 2,
+            attachments: this.attachments,
+        });
+
+        assert.strictEqual(this.attachments[1].type, 'url',
+            "the type should be url");
+        assert.strictEqual(this.attachments[1].fileType, 'youtu',
+            "there should be a fileType 'youtu'");
+        assert.strictEqual(this.attachments[1].youtube, 'FYqW0Gdwbzk',
+            "there should be a youtube token");
+
+        viewer.destroy();
+    });
+
 });
 });

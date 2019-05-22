@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
-from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo import api, fields, models, _
+from odoo.addons.mail.wizard.mail_compose_message import _reopen
 
 
 class AccountInvoiceSend(models.TransientModel):
@@ -10,8 +10,8 @@ class AccountInvoiceSend(models.TransientModel):
     _inherits = {'mail.compose.message':'composer_id'}
     _description = 'Account Invoice Send'
 
-    is_email = fields.Boolean('Email', default=lambda self: self.env.user.company_id.invoice_is_email)
-    is_print = fields.Boolean('Print', default=lambda self: self.env.user.company_id.invoice_is_print)
+    is_email = fields.Boolean('Email', default=lambda self: self.env.company_id.invoice_is_email)
+    is_print = fields.Boolean('Print', default=lambda self: self.env.company_id.invoice_is_print)
     printed = fields.Boolean('Is Printed', default=False)
     invoice_ids = fields.Many2many('account.invoice', 'account_invoice_account_invoice_send_rel', string='Invoices')
     composer_id = fields.Many2one('mail.compose.message', string='Composer', required=True, ondelete='cascade')
@@ -67,3 +67,11 @@ class AccountInvoiceSend(models.TransientModel):
         if self.is_print:
             return self._print_document()
         return {'type': 'ir.actions.act_window_close'}
+
+    @api.multi
+    def save_as_template(self):
+        self.ensure_one()
+        self.composer_id.save_as_template()
+        action = _reopen(self, self.id, self.model, context=self._context)
+        action.update({'name': _('Send Invoice')})
+        return action

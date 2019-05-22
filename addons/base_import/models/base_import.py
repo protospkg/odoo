@@ -2,6 +2,7 @@
 # Part of Odoo. See LICENSE file for full copyright and licensing details.
 
 import base64
+import codecs
 import collections
 import unicodedata
 
@@ -32,6 +33,12 @@ DEFAULT_IMAGE_REGEX = r"(?:http|https)://.*(?:png|jpe?g|tiff?|gif|bmp)"
 DEFAULT_IMAGE_CHUNK_SIZE = 32768
 IMAGE_FIELDS = ["icon", "image", "logo", "picture"]
 _logger = logging.getLogger(__name__)
+BOM_MAP = {
+    'utf-16le': codecs.BOM_UTF16_LE,
+    'utf-16be': codecs.BOM_UTF16_BE,
+    'utf-32le': codecs.BOM_UTF32_LE,
+    'utf-32be': codecs.BOM_UTF32_BE,
+}
 
 try:
     import xlrd
@@ -113,7 +120,7 @@ class Import(models.TransientModel):
     _transient_max_hours = 12.0
 
     res_model = fields.Char('Model')
-    file = fields.Binary('File', help="File to check and/or import, raw binary (not base64)")
+    file = fields.Binary('File', help="File to check and/or import, raw binary (not base64)", attachment=False)
     file_name = fields.Char('File Name')
     file_type = fields.Char('File Type')
 
@@ -263,15 +270,15 @@ class Import(models.TransientModel):
     def _read_xls_book(self, book):
         sheet = book.sheet_by_index(0)
         # emulate Sheet.get_rows for pre-0.9.4
-        for row in pycompat.imap(sheet.row, range(sheet.nrows)):
+        for rowx, row in enumerate(map(sheet.row, range(sheet.nrows)), 1):
             values = []
-            for cell in row:
+            for colx, cell in enumerate(row, 1):
                 if cell.ctype is xlrd.XL_CELL_NUMBER:
                     is_float = cell.value % 1 != 0.0
                     values.append(
-                        pycompat.text_type(cell.value)
+                        str(cell.value)
                         if is_float
-                        else pycompat.text_type(int(cell.value))
+                        else str(int(cell.value))
                     )
                 elif cell.ctype is xlrd.XL_CELL_DATE:
                     is_datetime = cell.value % 1 != 0.0
@@ -286,9 +293,11 @@ class Import(models.TransientModel):
                     values.append(u'True' if cell.value else u'False')
                 elif cell.ctype is xlrd.XL_CELL_ERROR:
                     raise ValueError(
-                        _("Error cell found while reading XLS/XLSX file: %s") %
-                        xlrd.error_text_from_code.get(
-                            cell.value, "unknown error code %s" % cell.value)
+                        _("Invalid cell value at row %(row)s, column %(col)s: %(cell_value)s") % {
+                            'row': rowx,
+                            'col': colx,
+                            'cell_value': xlrd.error_text_from_code.get(cell.value, _("unknown error code %s") % cell.value)
+                        }
                     )
                 else:
                     values.append(cell.value)
@@ -321,6 +330,13 @@ class Import(models.TransientModel):
         encoding = options.get('encoding')
         if not encoding:
             encoding = options['encoding'] = chardet.detect(csv_data)['encoding'].lower()
+            # some versions of chardet (e.g. 2.3.0 but not 3.x) will return
+            # utf-(16|32)(le|be), which for python means "ignore / don't strip
+            # BOM". We don't want that, so rectify the encoding to non-marked
+            # IFF the guessed encoding is LE/BE and csv_data starts with a BOM
+            bom = BOM_MAP.get(encoding)
+            if bom and csv_data.startswith(bom):
+                encoding = options['encoding'] = encoding[:-2]
 
         if encoding != 'utf-8':
             csv_data = csv_data.decode(encoding).encode('utf-8')
@@ -642,7 +658,7 @@ class Import(models.TransientModel):
         if options.get('headers'):
             rows_to_import = itertools.islice(rows_to_import, 1, None)
         data = [
-            list(row) for row in pycompat.imap(mapper, rows_to_import)
+            list(row) for row in map(mapper, rows_to_import)
             # don't try inserting completely empty rows (e.g. from
             # filtering out o2m fields)
             if any(row)
@@ -863,7 +879,7 @@ class Import(models.TransientModel):
             return {
                 'messages': [{
                     'type': 'error',
-                    'message': pycompat.text_type(error),
+                    'message': str(error),
                     'record': False,
                 }]
             }

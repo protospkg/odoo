@@ -15,7 +15,7 @@ var qweb = core.qweb;
 
 var PieChart = Widget.extend({
     className: 'o_pie_chart',
-    xmlDependencies: ['/web/static/src/xml/pie_chart.xml'],
+    xmlDependencies: ['/web/static/src/xml/chart.xml'],
 
     /**
      * @override
@@ -35,13 +35,15 @@ var PieChart = Widget.extend({
         });
 
         this.subViewParams = {
-            context: record.context,
-            domain: domain,
-            groupBy: [],
             modelName: record.model,
             withControlPanel: false,
             isEmbedded: true,
             mode: 'pie',
+        };
+        this.subViewParams.searchQuery = {
+            context: record.context,
+            domain: domain,
+            groupBy: [],
         };
 
         this.viewInfo = {
@@ -65,7 +67,7 @@ var PieChart = Widget.extend({
             self.controller = controller;
             return self.controller.appendTo(document.createDocumentFragment());
         });
-        return $.when(def1, def2);
+        return Promise.all([def1, def2]);
     },
     /**
      * @override

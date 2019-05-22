@@ -18,14 +18,14 @@ class StockMove(models.Model):
 class LandedCost(models.Model):
     _name = 'stock.landed.cost'
     _description = 'Stock Landed Cost'
-    _inherit = 'mail.thread'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
 
     name = fields.Char(
         'Name', default=lambda self: _('New'),
-        copy=False, readonly=True, track_visibility='always')
+        copy=False, readonly=True, tracking=True)
     date = fields.Date(
         'Date', default=fields.Date.context_today,
-        copy=False, required=True, states={'done': [('readonly', True)]}, track_visibility='onchange')
+        copy=False, required=True, states={'done': [('readonly', True)]}, tracking=True)
     picking_ids = fields.Many2many(
         'stock.picking', string='Transfers',
         copy=False, states={'done': [('readonly', True)]})
@@ -39,12 +39,12 @@ class LandedCost(models.Model):
         'Item Description', states={'done': [('readonly', True)]})
     amount_total = fields.Float(
         'Total', compute='_compute_total_amount',
-        digits=0, store=True, track_visibility='always')
+        digits=0, store=True, tracking=True)
     state = fields.Selection([
         ('draft', 'Draft'),
         ('done', 'Posted'),
         ('cancel', 'Cancelled')], 'State', default='draft',
-        copy=False, readonly=True, track_visibility='onchange')
+        copy=False, readonly=True, tracking=True)
     account_move_id = fields.Many2one(
         'account.move', 'Journal Entry',
         copy=False, readonly=True)
@@ -73,7 +73,7 @@ class LandedCost(models.Model):
     @api.multi
     def _track_subtype(self, init_values):
         if 'state' in init_values and self.state == 'done':
-            return 'stock_landed_costs.mt_stock_landed_cost_open'
+            return self.env.ref('stock_landed_costs.mt_stock_landed_cost_open')
         return super(LandedCost, self)._track_subtype(init_values)
 
     @api.multi
@@ -128,7 +128,7 @@ class LandedCost(models.Model):
     def _check_sum(self):
         """ Check if each cost line its valuation lines sum to the correct amount
         and if the overall total amount is correct also """
-        prec_digits = self.env.user.company_id.currency_id.decimal_places
+        prec_digits = self.env.company_id.currency_id.decimal_places
         for landed_cost in self:
             total_amount = sum(landed_cost.valuation_adjustment_lines.mapped('additional_landed_cost'))
             if not tools.float_compare(total_amount, landed_cost.amount_total, precision_digits=prec_digits) == 0:
@@ -307,6 +307,9 @@ class AdjustmentLines(models.Model):
             return False
         accounts = self.product_id.product_tmpl_id.get_product_accounts()
         debit_account_id = accounts.get('stock_valuation') and accounts['stock_valuation'].id or False
+        # If the stock move is dropshipped move we need to get the cost account instead the stock valuation account
+        if self.move_id._is_dropshipped():
+            debit_account_id = accounts.get('expense') and accounts['expense'].id or False
         already_out_account_id = accounts['stock_output'].id
         credit_account_id = self.cost_line_id.account_id.id or cost_product.property_account_expense_id.id or cost_product.categ_id.property_account_expense_categ_id.id
 
@@ -362,7 +365,7 @@ class AdjustmentLines(models.Model):
             AccountMoveLine.append([0, 0, credit_line])
 
             # TDE FIXME: oh dear
-            if self.env.user.company_id.anglo_saxon_accounting:
+            if self.env.company_id.anglo_saxon_accounting:
                 debit_line = dict(base_line,
                                   name=(self.name + ": " + str(qty_out) + _(' already out')),
                                   quantity=0,

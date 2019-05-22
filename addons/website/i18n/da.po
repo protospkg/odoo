@@ -22,7 +22,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-19 08:20+0000\n"
+"POT-Creation-Date: 2018-10-08 06:48+0000\n"
 "PO-Revision-Date: 2018-08-24 09:33+0000\n"
 "Last-Translator: Sanne Kristensen <sanne@vkdata.dk>, 2018\n"
 "Language-Team: Danish (https://www.transifex.com/odoo/teams/41243/da/)\n"
@@ -37,7 +37,7 @@ msgstr ""
 #: code:addons/website/static/src/js/editor/snippets.options.js:1068
 #, python-format
 msgid " Add Images"
-msgstr "Tilføj billeder"
+msgstr "Tilføj Billeder"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.bs_debug_page_ir_ui_view
@@ -166,7 +166,7 @@ msgstr "2/5"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_comparisons
 msgid "24x7 toll-free support"
-msgstr "24x7 gratis support"
+msgstr "24x7 momsfri support"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.snippet_options
@@ -491,11 +491,6 @@ msgstr ""
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.snippet_options
-msgid "<i class=\"fa fa-minus\"/>Remove Tab"
-msgstr ""
-
-#. module: website
-#: model_terms:ir.ui.view,arch_db:website.snippet_options
 msgid "<i class=\"fa fa-minus\"/>Thickness"
 msgstr ""
 
@@ -513,11 +508,6 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website.snippet_options
 msgid "<i class=\"fa fa-picture-o\"/>Background Image"
 msgstr "<i class=\"fa fa-picture-o\"/>Baggrundsbillede"
-
-#. module: website
-#: model_terms:ir.ui.view,arch_db:website.snippet_options
-msgid "<i class=\"fa fa-plus\"/>Add Tab"
-msgstr ""
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.language_selector
@@ -653,7 +643,7 @@ msgid ""
 "plus-circle\"/> Add Images</span>"
 msgstr ""
 "<span class=\"o_add_images\" style=\"cursor: pointer;\"><i class=\"fa fa-"
-"plus-circle\"/> Tilføj billeder</span>"
+"plus-circle\"/> Tilføj Billeder</span>"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_comparisons
@@ -964,7 +954,7 @@ msgstr ""
 #. module: website
 #: model:ir.model.fields,field_description:website.field_ir_actions_server__website_published
 msgid "Available on the Website"
-msgstr "Synlig på hjemmesiden"
+msgstr "Synlig på websiten"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.500
@@ -1269,7 +1259,7 @@ msgstr "Bekræftelse"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.footer_custom
 msgid "Connect with us"
-msgstr "Opret forbindelse til os"
+msgstr "Forbind med os"
 
 #. module: website
 #: model:ir.model,name:website.model_res_partner
@@ -1328,7 +1318,7 @@ msgstr "Landegrupper"
 #: code:addons/website/static/src/js/menu/content.js:372
 #, python-format
 msgid "Create Menu"
-msgstr "Opret menu"
+msgstr "Opret Menu"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.page_404
@@ -1433,7 +1423,7 @@ msgstr "Standard"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
 msgid "Default Access Rights"
-msgstr "Standard adgangsrettigheder"
+msgstr "Standard Adgangsrettigheder"
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_website__default_lang_id
@@ -1844,12 +1834,12 @@ msgstr "Favicon"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_three_columns
 msgid "Feature One"
-msgstr "Funktion nr. 1"
+msgstr "Funktion Et"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_three_columns
 msgid "Feature Three"
-msgstr "Funktion nr. 3"
+msgstr "Funktion tre"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_card
@@ -1859,7 +1849,7 @@ msgstr ""
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_three_columns
 msgid "Feature Two"
-msgstr "Funktion nr. 2"
+msgstr "Funktion To"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
@@ -1869,7 +1859,7 @@ msgstr "Funktioner"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_features
 msgid "First Feature"
-msgstr "Første funktion"
+msgstr "Første Funktion"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_features_grid
@@ -1969,7 +1959,7 @@ msgstr "GitHub konto"
 #: code:addons/website/static/src/js/menu/content.js:51
 #, python-format
 msgid "Go To Page"
-msgstr "Gå til side"
+msgstr "Gå Til Side"
 
 #. module: website
 #. openerp-web
@@ -1989,7 +1979,7 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
 #, python-format
 msgid "Go to Website"
-msgstr "Gå til hjemmeside"
+msgstr "Gå til Hjemmeside"
 
 #. module: website
 #. openerp-web
@@ -2065,7 +2055,7 @@ msgstr "Google Maps API nøgle"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
 msgid "Google Plus"
-msgstr "Google Plus"
+msgstr ""
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_res_config_settings__social_googleplus
@@ -2233,7 +2223,7 @@ msgstr "Startside"
 #: code:addons/website/static/src/xml/website.backend.xml:63
 #, python-format
 msgid "How to get my Client ID"
-msgstr "Sådan får du dit kunde ID"
+msgstr ""
 
 #. module: website
 #. openerp-web
@@ -2346,7 +2336,7 @@ msgstr "Instagram"
 #: model:ir.model.fields,field_description:website.field_res_config_settings__social_instagram
 #: model:ir.model.fields,field_description:website.field_website__social_instagram
 msgid "Instagram Account"
-msgstr "Instagram konto"
+msgstr ""
 
 #. module: website
 #. openerp-web
@@ -2612,7 +2602,7 @@ msgstr "Link til min Analytics-konto"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
 msgid "LinkedIn"
-msgstr "LinkedIn"
+msgstr ""
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_res_config_settings__social_linkedin
@@ -2849,14 +2839,9 @@ msgid "Navbar"
 msgstr ""
 
 #. module: website
-#: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
-msgid "New"
-msgstr "Ny"
-
-#. module: website
 #: model_terms:ir.ui.view,arch_db:website.user_navbar
 msgid "New Blog Post"
-msgstr "Nyt blogindlæg"
+msgstr "Nyt Blogindlæg"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.user_navbar
@@ -2871,7 +2856,7 @@ msgstr "Nyt arrangement"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.user_navbar
 msgid "New Forum"
-msgstr "Nyt forum"
+msgstr "Nyt Forum"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.user_navbar
@@ -3297,6 +3282,13 @@ msgstr "Publicer"
 
 #. module: website
 #. openerp-web
+#: code:addons/website/static/src/xml/website.pageProperties.xml:137
+#, python-format
+msgid "Publish date"
+msgstr ""
+
+#. module: website
+#. openerp-web
 #: code:addons/website/static/src/js/tours/banner.js:42
 #, python-format
 msgid "Publish your page by clicking on the <b>Save</b> button."
@@ -3347,7 +3339,7 @@ msgstr ""
 #. module: website
 #: model:ir.model,name:website.model_ir_rule
 msgid "Record Rule"
-msgstr "Optage regel"
+msgstr "Optag Rule"
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_website_redirect__url_from
@@ -3432,7 +3424,7 @@ msgstr "Nulstil skabeloner"
 #: model:ir.model.fields,help:website.field_website_page__website_id
 #: model:ir.model.fields,help:website.field_website_published_multi_mixin__website_id
 msgid "Restrict publishing to this website."
-msgstr "Begræns udgivelse til denne hjemmeside."
+msgstr ""
 
 #. module: website
 #: model:res.groups,name:website.group_website_publisher
@@ -3470,7 +3462,7 @@ msgstr "SEO Metadata"
 #: model:ir.model.fields,field_description:website.field_website_seo_metadata__is_seo_optimized
 #: model_terms:ir.ui.view,arch_db:website.one_page_line
 msgid "SEO optimized"
-msgstr "SEO-optimering"
+msgstr ""
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_features_grid
@@ -3540,7 +3532,7 @@ msgstr ""
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_features_grid
 msgid "Select and delete blocks to remove some features."
-msgstr "Vælg og slet blokke for at slette nogle funktioner."
+msgstr "Vælg og slet blokke for at slette nogle features."
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
@@ -3551,7 +3543,7 @@ msgstr ""
 #: model_terms:ir.ui.view,arch_db:website.contactus
 #: model_terms:website.page,arch_db:website.contactus_page
 msgid "Send us an email"
-msgstr "Send os en e-mail"
+msgstr "Send os en email"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.bs_debug_page_ir_ui_view
@@ -3873,13 +3865,6 @@ msgid "The installation of an App is already in progress."
 msgstr ""
 
 #. module: website
-#. openerp-web
-#: code:addons/website/static/src/xml/website.seo.xml:93
-#, python-format
-msgid "The language of the keyword and related keywords."
-msgstr ""
-
-#. module: website
 #: model_terms:ir.ui.view,arch_db:website.403
 msgid "The page you were looking for could not be authorized."
 msgstr "Du har ikke adgang til den ønskede side."
@@ -3941,7 +3926,7 @@ msgstr ""
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_features
 msgid "Third Feature"
-msgstr "Tredje funktion"
+msgstr "Tredje Funktion"
 
 #. module: website
 #: model:ir.model.fields,help:website.field_res_config_settings__favicon
@@ -4284,12 +4269,12 @@ msgstr "Værdi"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.snippet_options
 msgid "Very Fast"
-msgstr "Meget hurtig"
+msgstr "Meget Hurtig"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.snippet_options
 msgid "Very Slow"
-msgstr "Meget langsom"
+msgstr "Meget Langsom"
 
 #. module: website
 #: model:ir.model,name:website.model_ir_ui_view
@@ -4332,7 +4317,7 @@ msgstr "Synlig"
 #: model:ir.model.fields,field_description:website.field_website_published_mixin__website_published
 #: model:ir.model.fields,field_description:website.field_website_published_multi_mixin__website_published
 msgid "Visible on current website"
-msgstr "Synlig på denne hjemmeside"
+msgstr ""
 
 #. module: website
 #. openerp-web
@@ -4436,7 +4421,7 @@ msgstr ""
 #: model:ir.actions.act_window,name:website.action_website_pages_list
 #: model_terms:ir.ui.view,arch_db:website.website_pages_tree_view
 msgid "Website Pages"
-msgstr "Hjemmeside sider"
+msgstr "Hjemmeside Sider"
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_ir_actions_server__website_path
@@ -4472,7 +4457,7 @@ msgstr "Website indstillinger"
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.res_config_settings_view_form
 msgid "Website Title"
-msgstr "Hjemmeside overskrift"
+msgstr "Hjemmeside Titel"
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_ir_attachment__website_url
@@ -4512,7 +4497,7 @@ msgstr "Meta beskrivelse"
 #: model:ir.model.fields,field_description:website.field_website_page__website_meta_keywords
 #: model:ir.model.fields,field_description:website.field_website_seo_metadata__website_meta_keywords
 msgid "Website meta keywords"
-msgstr "Meta søgeord"
+msgstr "Meta nøgleord"
 
 #. module: website
 #: model:ir.model.fields,field_description:website.field_ir_ui_view__website_meta_title
@@ -4618,7 +4603,7 @@ msgstr ""
 #: code:addons/website/static/src/xml/website.backend.xml:50
 #, python-format
 msgid "You do not seem to have access to this Analytics Account."
-msgstr "Det lader ikke til at du har adgang til denne Analytiske konto."
+msgstr "Du lader ikke til at have adgang til denne Analytiske Konto."
 
 #. module: website
 #. openerp-web
@@ -4634,7 +4619,7 @@ msgstr ""
 #: code:addons/website/static/src/xml/website.backend.xml:49
 #, python-format
 msgid "You need to log in to your Google Account before:"
-msgstr "Du skal logge ind på din Google konto før:"
+msgstr "Du skal logge ind på din Google Konto før:"
 
 #. module: website
 #: model_terms:ir.ui.view,arch_db:website.s_faq_collapse
@@ -4716,7 +4701,7 @@ msgstr "fx Om os"
 #. module: website
 #: model:ir.ui.menu,name:website.menu_website_dashboard
 msgid "eCommerce Dashboard"
-msgstr "eCommerce Dashboard"
+msgstr ""
 
 #. module: website
 #. openerp-web

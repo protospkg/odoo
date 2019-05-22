@@ -35,13 +35,13 @@ import unicodedata
 import odoo
 import odoo.modules.registry
 from odoo.api import call_kw, Environment
-from odoo.modules import get_resource_path
-from odoo.tools import crop_image, topological_sort, html_escape, pycompat
+from odoo.modules import get_module_path, get_resource_path
+from odoo.tools import image_process, topological_sort, html_escape, pycompat
 from odoo.tools.mimetypes import guess_mimetype
 from odoo.tools.translate import _
 from odoo.tools.misc import str2bool, xlwt, file_open
 from odoo.tools.safe_eval import safe_eval
-from odoo import http
+from odoo import http, tools
 from odoo.http import content_disposition, dispatch_rpc, request, \
     serialize_exception as _serialize_exception, Response
 from odoo.exceptions import AccessError, UserError, AccessDenied
@@ -424,16 +424,6 @@ def xml2json_from_elementtree(el, preserve_whitespaces=False):
     res["children"] = kids
     return res
 
-def binary_content(xmlid=None, model='ir.attachment', id=None, field='datas', unique=False,
-                   filename=None, filename_field='datas_fname', download=False, mimetype=None,
-                   default_mimetype='application/octet-stream', related_id=None, access_mode=None, access_token=None,
-                   env=None):
-    return request.registry['ir.http'].binary_content(
-        xmlid=xmlid, model=model, id=id, field=field, unique=unique, filename=filename,
-        filename_field=filename_field, download=download, mimetype=mimetype,
-        default_mimetype=default_mimetype, related_id=related_id, access_mode=access_mode, access_token=access_token,
-        env=env)
-
 #----------------------------------------------------------
 # Odoo Web web Controllers
 #----------------------------------------------------------
@@ -609,6 +599,7 @@ class WebClient(http.Controller):
             lang_params = langs.read([
                 "name", "direction", "date_format", "time_format",
                 "grouping", "decimal_point", "thousands_sep", "week_start"])[0]
+            lang_params['week_start'] = int(lang_params['week_start'])
 
         # Regional languages (ll_CC) must inherit/override their parent lang (ll), but this is
         # done server-side when the language is loaded, so we only need to load the user's lang.
@@ -648,22 +639,6 @@ class WebClient(http.Controller):
 
 
 class Proxy(http.Controller):
-
-    @http.route('/web/proxy/load', type='json', auth="none")
-    def load(self, path):
-        """ Proxies an HTTP request through a JSON request.
-
-        It is strongly recommended to not request binary files through this,
-        as the result will be a binary data blob as well.
-
-        :param path: actual request path
-        :return: file content
-        """
-        from werkzeug.test import Client
-        from werkzeug.wrappers import BaseResponse
-
-        base_url = request.httprequest.base_url
-        return Client(request.httprequest.app, BaseResponse).get(path, base_url=base_url).data
 
     @http.route('/web/proxy/post/<path:path>', type='http', auth='user', methods=['GET'])
     def post(self, path):
@@ -903,8 +878,7 @@ class DataSet(http.Controller):
     def search_read(self, model, fields=False, offset=0, limit=False, domain=None, sort=None):
         return self.do_search_read(model, fields, offset, limit, domain, sort)
 
-    def do_search_read(self, model, fields=False, offset=0, limit=False, domain=None
-                       , sort=None):
+    def do_search_read(self, model, fields=False, offset=0, limit=False, domain=None, sort=None):
         """ Performs a search() followed by a read() (if needed) using the
         provided search criteria
 
@@ -921,22 +895,7 @@ class DataSet(http.Controller):
         :rtype: list
         """
         Model = request.env[model]
-
-        records = Model.search_read(domain, fields,
-                                    offset=offset or 0, limit=limit or False, order=sort or False)
-        if not records:
-            return {
-                'length': 0,
-                'records': []
-            }
-        if limit and len(records) == limit:
-            length = Model.search_count(domain)
-        else:
-            length = len(records) + (offset or 0)
-        return {
-            'length': length,
-            'records': records
-        }
+        return Model.web_search_read(domain, fields, offset=offset, limit=limit, order=sort)
 
     @http.route('/web/dataset/load', type='json', auth="user")
     def load(self, model, id, fields):
@@ -962,8 +921,8 @@ class DataSet(http.Controller):
         return self._call_kw(model, method, args, kwargs)
 
     @http.route('/web/dataset/call_button', type='json', auth="user")
-    def call_button(self, model, method, args, domain_id=None, context_id=None):
-        action = self._call_kw(model, method, args, {})
+    def call_button(self, model, method, args, kwargs):
+        action = self._call_kw(model, method, args, kwargs)
         if isinstance(action, dict) and action.get('type') != '':
             return clean_action(action)
         return False
@@ -1009,13 +968,7 @@ class View(http.Controller):
 class Binary(http.Controller):
 
     def placeholder(self, image='placeholder.png'):
-        addons_path = http.addons_manifest['web']['addons_path']
-        return open(os.path.join(addons_path, 'web', 'static', 'src', 'img', image), 'rb').read()
-
-    def force_contenttype(self, headers, contenttype='image/png'):
-        dictheaders = dict(headers)
-        dictheaders['Content-Type'] = contenttype
-        return list(dictheaders.items())
+        return tools.file_open(get_resource_path('web', 'static/src/img', image), 'rb').read()
 
     @http.route(['/web/content',
         '/web/content/<string:xmlid>',
@@ -1029,18 +982,14 @@ class Binary(http.Controller):
         '/web/content/<string:model>/<int:id>/<string:field>/<string:filename>'], type='http', auth="public")
     def content_common(self, xmlid=None, model='ir.attachment', id=None, field='datas',
                        filename=None, filename_field='datas_fname', unique=None, mimetype=None,
-                       download=None, data=None, token=None, access_token=None, related_id=None, access_mode=None,
-                       **kw):
-        status, headers, content = binary_content(
+                       download=None, data=None, token=None, access_token=None, **kw):
+
+        status, headers, content = request.env['ir.http'].binary_content(
             xmlid=xmlid, model=model, id=id, field=field, unique=unique, filename=filename,
-            filename_field=filename_field, download=download, mimetype=mimetype,
-            access_token=access_token, related_id=related_id, access_mode=access_mode)
-        if status == 304:
-            response = werkzeug.wrappers.Response(status=status, headers=headers)
-        elif status == 301:
-            return werkzeug.utils.redirect(content, code=301)
-        elif status != 200:
-            response = request.not_found()
+            filename_field=filename_field, download=download, mimetype=mimetype, access_token=access_token)
+
+        if status != 200:
+            return request.env['ir.http']._response_by_status(status, headers, content)
         else:
             content_base64 = base64.b64decode(content)
             headers.append(('Content-Length', len(content_base64)))
@@ -1048,6 +997,15 @@ class Binary(http.Controller):
         if token:
             response.set_cookie('fileToken', token)
         return response
+
+    @http.route(['/web/partner_image',
+        '/web/partner_image/<int:rec_id>',
+        '/web/partner_image/<int:rec_id>/<string:field>',
+        '/web/partner_image/<int:rec_id>/<string:field>/<string:model>/'], type='http', auth="public")
+    def content_image_partner(self, rec_id, field='image_small', model='res.partner', **kwargs):
+        # other kwargs are ignored on purpose
+        return self._content_image(id=rec_id, model='res.partner', field=field,
+            placeholder='user_placeholder.jpg')
 
     @http.route(['/web/image',
         '/web/image/<string:xmlid>',
@@ -1068,53 +1026,34 @@ class Binary(http.Controller):
         '/web/image/<int:id>-<string:unique>/<int:width>x<int:height>/<string:filename>'], type='http', auth="public")
     def content_image(self, xmlid=None, model='ir.attachment', id=None, field='datas',
                       filename_field='datas_fname', unique=None, filename=None, mimetype=None,
-                      download=None, width=0, height=0, crop=False, related_id=None, access_mode=None,
-                      access_token=None, avoid_if_small=False, upper_limit=False, signature=False):
-        status, headers, content = binary_content(
+                      download=None, width=0, height=0, crop=False, access_token=None,
+                      **kwargs):
+        # other kwargs are ignored on purpose
+        return self._content_image(xmlid=xmlid, model=model, id=id, field=field,
+            filename_field=filename_field, unique=unique, filename=filename, mimetype=mimetype,
+            download=download, width=width, height=height, crop=crop, access_token=access_token)
+
+    def _content_image(self, xmlid=None, model='ir.attachment', id=None, field='datas',
+                       filename_field='datas_fname', unique=None, filename=None, mimetype=None,
+                       download=None, width=0, height=0, crop=False, access_token=None,
+                       placeholder='placeholder.png', **kwargs):
+        status, headers, image_base64 = request.env['ir.http'].binary_content(
             xmlid=xmlid, model=model, id=id, field=field, unique=unique, filename=filename,
             filename_field=filename_field, download=download, mimetype=mimetype,
-            default_mimetype='image/png', related_id=related_id, access_mode=access_mode, access_token=access_token)
-        if status == 304:
-            return werkzeug.wrappers.Response(status=304, headers=headers)
-        elif status == 301:
-            return werkzeug.utils.redirect(content, code=301)
-        elif status != 200 and download:
-            return request.not_found()
+            default_mimetype='image/png', access_token=access_token)
 
-        if headers and dict(headers).get('Content-Type', '') == 'image/svg+xml':  # we shan't resize svg images
-            height = 0
-            width = 0
-        else:
-            height = int(height or 0)
-            width = int(width or 0)
+        if status == 301 or (status != 200 and download):
+            return request.env['ir.http']._response_by_status(status, headers, image_base64)
+        if not image_base64:
+            image_base64 = base64.b64encode(self.placeholder(image=placeholder))
+            if not (width or height):
+                width, height = odoo.tools.image_guess_size_from_field_name(field)
 
-        if crop and (width or height):
-            content = crop_image(content, type='center', size=(width, height), ratio=(1, 1))
+        image_base64 = image_process(image_base64, size=(int(width), int(height)), crop=crop)
 
-        elif content and (width or height):
-            if not upper_limit:
-                # resize maximum 500*500
-                if width > 500:
-                    width = 500
-                if height > 500:
-                    height = 500
-            content = odoo.tools.image_resize_image(base64_source=content, size=(width or None, height or None),
-                                                    encoding='base64', upper_limit=upper_limit,
-                                                    avoid_if_small=avoid_if_small)
-
-        if content:
-            image_base64 = base64.b64decode(content)
-        else:
-            suffix = field.split('_')[-1]
-            if suffix in ('small', 'medium', 'big'):
-                encoded_placeholder = base64.b64encode(self.placeholder(image='placeholder.png'))
-                image_base64 = base64.b64decode(getattr(odoo.tools, 'image_resize_image_%s' % suffix)(encoded_placeholder))
-            else:
-                image_base64 = self.placeholder(image='placeholder.png')  # could return (contenttype, content) in master
-            headers = self.force_contenttype(headers, contenttype='image/png')
-
-        headers.append(('Content-Length', len(image_base64)))
-        response = request.make_response(image_base64, headers)
+        content = base64.b64decode(image_base64)
+        headers = http.set_safe_image_headers(headers, content)
+        response = request.make_response(content, headers)
         response.status_code = status
         return response
 
@@ -1170,6 +1109,7 @@ class Binary(http.Controller):
                     'res_model': model,
                     'res_id': int(id)
                 })
+                attachment._post_add_create()
             except Exception:
                 args.append({'error': _("Something horrible happened")})
                 _logger.exception("Fail to upload attachment %s" % ufile.filename)
@@ -1177,7 +1117,8 @@ class Binary(http.Controller):
                 args.append({
                     'filename': filename,
                     'mimetype': ufile.content_type,
-                    'id': attachment.id
+                    'id': attachment.id,
+                    'size': attachment.file_size
                 })
         return out % (json.dumps(callback), json.dumps(args))
 
@@ -1235,6 +1176,41 @@ class Binary(http.Controller):
                 response = http.send_file(placeholder(imgname + imgext))
 
         return response
+
+    @http.route(['/web/sign/get_fonts','/web/sign/get_fonts/<string:fontname>'], type='json', auth='public')
+    def get_fonts(self, fontname=None):
+        """This route will return a list of base64 encoded fonts.
+
+        Those fonts will be proposed to the user when creating a signature
+        using mode 'auto'.
+
+        :return: base64 encoded fonts
+        :rtype: list
+        """
+
+
+        fonts = []
+        if fontname:
+            module_path = get_module_path('web')
+            fonts_folder_path = os.path.join(module_path, 'static/src/fonts/sign/')
+            module_resource_path = get_resource_path('web', 'static/src/fonts/sign/' + fontname)
+            if fonts_folder_path and module_resource_path:
+                fonts_folder_path = os.path.join(os.path.normpath(fonts_folder_path), '')
+                module_resource_path = os.path.normpath(module_resource_path)
+                if module_resource_path.startswith(fonts_folder_path):
+                    with file_open(module_resource_path, 'rb') as font_file:
+                        font = base64.b64encode(font_file.read())
+                        fonts.append(font)
+        else:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            fonts_directory = os.path.join(current_dir, '..', 'static', 'src', 'fonts', 'sign')
+            font_filenames = sorted(os.listdir(fonts_directory))
+
+            for filename in font_filenames:
+                font_file = open(os.path.join(fonts_directory, filename), 'rb')
+                font = base64.b64encode(font_file.read())
+                fonts.append(font)
+        return fonts
 
 class Action(http.Controller):
 
@@ -1489,7 +1465,7 @@ class CSVExport(ExportFormat, http.Controller):
             row = []
             for d in data:
                 # Spreadsheet apps tend to detect formulas on leading =, + and -
-                if isinstance(d, pycompat.string_types) and d.startswith(('=', '-', '+')):
+                if isinstance(d, str) and d.startswith(('=', '-', '+')):
                     d = "'" + d
 
                 row.append(pycompat.to_text(d))
@@ -1532,7 +1508,7 @@ class ExcelExport(ExportFormat, http.Controller):
             for cell_index, cell_value in enumerate(row):
                 cell_style = base_style
 
-                if isinstance(cell_value, bytes) and not isinstance(cell_value, pycompat.string_types):
+                if isinstance(cell_value, bytes) and not isinstance(cell_value, str):
                     # because xls uses raw export, we can get a bytes object
                     # here. xlwt does not support bytes values in Python 3 ->
                     # assume this is base64 and decode to a string, if this
@@ -1542,7 +1518,7 @@ class ExcelExport(ExportFormat, http.Controller):
                     except UnicodeDecodeError:
                         raise UserError(_("Binary fields can not be exported to Excel unless their content is base64-encoded. That does not seem to be the case for %s.") % fields[cell_index])
 
-                if isinstance(cell_value, pycompat.string_types):
+                if isinstance(cell_value, str):
                     cell_value = re.sub("\r", " ", pycompat.to_text(cell_value))
                     # Excel supports a maximum of 32767 characters in each cell:
                     cell_value = cell_value[:32767]

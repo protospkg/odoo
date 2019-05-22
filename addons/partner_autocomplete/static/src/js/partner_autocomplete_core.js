@@ -1,14 +1,21 @@
-odoo.define('partner.autocomplete.core', function (require) {
+odoo.define('partner.autocomplete.Mixin', function (require) {
 'use strict';
 
-var rpc = require('web.rpc');
 var concurrency = require('web.concurrency');
 
-return {
+var core = require('web.core');
+var Qweb = core.qweb;
+var utils = require('web.utils');
+var _t = core._t;
+
+/**
+ * This mixin only works with classes having EventDispatcherMixin in 'web.mixins'
+ */
+var PartnerAutocompleteMixin = {
     _dropPreviousOdoo: new concurrency.DropPrevious(),
     _dropPreviousClearbit: new concurrency.DropPrevious(),
     _timeout : 1000, // Timeout for Clearbit autocomplete in ms
-    
+
     //--------------------------------------------------------------------------
     // Public
     //--------------------------------------------------------------------------
@@ -17,62 +24,65 @@ return {
      * Get list of companies via Autocomplete API
      *
      * @param {string} value
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
-    autocomplete: function (value) {
+    _autocomplete: function (value) {
+        var self = this;
         value = value.trim();
-        var def = $.Deferred(),
-            isVAT = this._isVAT(value),
-            odooSuggestions = [],
-            clearbitSuggestions = [];
+        var isVAT = this._isVAT(value);
+        var odooSuggestions = [];
+        var clearbitSuggestions = [];
+        return new Promise(function (resolve, reject) {
+            var odooPromise = self._getOdooSuggestions(value, isVAT).then(function (suggestions){
+                odooSuggestions = suggestions;
+            });
 
-        var odooPromise = this._getOdooSuggestions(value, isVAT).then(function (suggestions){
-            odooSuggestions = suggestions;
+            // Only get Clearbit suggestions if not a VAT number
+            var clearbitPromise = isVAT ? false : self._getClearbitSuggestions(value).then(function (suggestions){
+                clearbitSuggestions = suggestions;
+            });
+
+            var concatResults = function () {
+                // Add Clearbit result with Odoo result (with unique domain)
+                if (clearbitSuggestions && clearbitSuggestions.length) {
+                    var websites = odooSuggestions.map(function (suggestion) {
+                        return suggestion.website;
+                    });
+                    clearbitSuggestions.forEach(function (suggestion) {
+                        if (websites.indexOf(suggestion.domain) < 0) {
+                            websites.push(suggestion.domain);
+                            odooSuggestions.push(suggestion);
+                        }
+                    });
+                }
+
+                odooSuggestions = _.filter(odooSuggestions, function (suggestion) {
+                    return !suggestion.ignored;
+                });
+                _.each(odooSuggestions, function(suggestion){
+                delete suggestion.ignored;
+                });
+                return resolve(odooSuggestions);
+            };
+
+            self._whenAll([odooPromise, clearbitPromise]).then(concatResults, concatResults);
         });
 
-        // Only get Clearbit suggestions if not a VAT number
-        var clearbitPromise = isVAT ? false : this._getClearbitSuggestions(value).then(function (suggestions){
-            clearbitSuggestions = suggestions;
-        });
-
-        var concatResults = function () {
-            // Add Clearbit result with Odoo result (with unique domain)
-            if (clearbitSuggestions && clearbitSuggestions.length) {
-                var websites = odooSuggestions.map(function (suggestion) {
-                    return suggestion.website;
-                });
-                clearbitSuggestions.forEach(function (suggestion) {
-                    if (websites.indexOf(suggestion.domain) < 0) {
-                        websites.push(suggestion.domain);
-                        odooSuggestions.push(suggestion);
-                    }
-                });
-            }
-
-            odooSuggestions = _.filter(odooSuggestions, function (suggestion) {
-                return !suggestion.ignored;
-            });
-            _.each(odooSuggestions, function(suggestion){
-              delete suggestion.ignored;
-            });
-            return def.resolve(odooSuggestions);
-        };
-
-        this._whenAll([odooPromise, clearbitPromise]).then(concatResults, concatResults);
-
-        return def;
     },
 
     /**
      * Get enrichment data
      *
      * @param {Object} company
-     * @returns {Deferred}
+     * @param {string} company.website
+     * @param {string} company.partner_gid
+     * @param {string} company.vat
+     * @returns {Promise}
      * @private
      */
-    enrichCompany: function (company) {
-        return rpc.query({
+    _enrichCompany: function (company) {
+        return this._rpc({
             model: 'res.partner',
             method: 'enrich_company',
             args: [company.website, company.partner_gid, company.vat],
@@ -83,10 +93,10 @@ return {
      * Get the company logo as Base 64 image from url
      *
      * @param {string} url
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
-    getCompanyLogo: function (url) {
+    _getCompanyLogo: function (url) {
         return this._getBase64Image(url).then(function (base64Image) {
             // base64Image equals "data:" if image not available on given url
             return base64Image ? base64Image.replace(/^data:image[^;]*;base64,?/, '') : false;
@@ -97,9 +107,11 @@ return {
      * Get enriched data + logo before populating partner form
      *
      * @param {Object} company
-     * @returns {Deferred}
+     * @returns {Promise}
      */
-    getCreateData: function (company) {
+    _getCreateData: function (company) {
+        var self = this;
+
         var removeUselessFields = function (company) {
             var fields = 'label,description,domain,logo,legal_name,ignored'.split(',');
             fields.forEach(function (field) {
@@ -112,35 +124,38 @@ return {
             });
         };
 
-        var def = $.Deferred();
+        return new Promise(function (resolve) {
+            // Fetch additional company info via Autocomplete Enrichment API
+            var enrichPromise = self._enrichCompany(company);
 
-        // Fetch additional company info via Autocomplete Enrichment API
-        var enrichPromise = this.enrichCompany(company);
+            // Get logo
+            var logoPromise = company.logo ? self._getCompanyLogo(company.logo) : false;
+            self._whenAll([enrichPromise, logoPromise]).then(function (result) {
+                var company_data = result[0];
+                var logo_data = result[1];
 
-        // Get logo
-        var logoPromise = company.logo ? this.getCompanyLogo(company.logo) : false;
+                if (company_data.error && company_data.error_message === 'Insufficient Credit') {
+                    self._notifyNoCredits();
+                    company_data = company;
+                }
 
-        this._whenAll([enrichPromise, logoPromise]).always(function (company_data, logo_data){
-            if (Array.isArray(company_data)) company_data = company_data[0];
-            else company_data = {};
+                if (_.isEmpty(company_data)) {
+                    company_data = company;
+                }
 
-            if (Array.isArray(logo_data)) logo_data = logo_data[0];
-            else logo_data = '';
+                // Delete attribute to avoid "Field_changed" errors
+                removeUselessFields(company_data);
 
-            if (_.isEmpty(company_data)) company_data = company;
-
-            // Delete attribute to avoid "Field_changed" errors
-            removeUselessFields(company_data);
-
-            // Assign VAT coming from parent VIES VAT query
-            if (company.vat) company_data.vat = company.vat;
-            def.resolve({
-                company: company_data,
-                logo: logo_data
+                // Assign VAT coming from parent VIES VAT query
+                if (company.vat) {
+                    company_data.vat = company.vat;
+                }
+                resolve({
+                    company: company_data,
+                    logo: logo_data
+                });
             });
         });
-
-        return def;
     },
 
     /**
@@ -148,7 +163,7 @@ return {
      *
      * @returns {boolean}
      */
-    isOnline: function () {
+    _isOnline: function () {
         return navigator && navigator.onLine;
     },
 
@@ -160,7 +175,7 @@ return {
      * @returns {boolean}
      * @private
      */
-    validateSearchTerm: function (search_val, onlyVAT) {
+    _validateSearchTerm: function (search_val, onlyVAT) {
         if (onlyVAT) return this._isVAT(search_val);
         else return search_val && search_val.length > 2;
     },
@@ -170,35 +185,31 @@ return {
     //--------------------------------------------------------------------------
 
     /**
-     * Returns a deferred which will be resolved with the base64 data of the
+     * Returns a promise which will be resolved with the base64 data of the
      * image fetched from the given url.
      *
      * @private
      * @param {string} url : the url where to find the image to fetch
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     _getBase64Image: function (url) {
-        var def = $.Deferred();
-        var xhr = new XMLHttpRequest();
-        xhr.onload = function () {
-            var reader = new FileReader();
-            reader.onloadend = function () {
-                def.resolve(reader.result);
+        return new Promise(function (resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.onload = function () {
+                utils.getDataURLFromFile(xhr.response).then(resolve);
             };
-            reader.readAsDataURL(xhr.response);
-        };
-        xhr.open('GET', url);
-        xhr.responseType = 'blob';
-        xhr.onerror = def.reject.bind(def);
-        xhr.send();
-        return def;
+            xhr.open('GET', url);
+            xhr.responseType = 'blob';
+            xhr.onerror = reject;
+            xhr.send();
+        });
     },
 
     /**
      * Use Clearbit Autocomplete API to return suggestions
      *
      * @param {string} value
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
     _getClearbitSuggestions: function (value) {
@@ -226,13 +237,13 @@ return {
      *
      * @param {string} value
      * @param {boolean} isVAT
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
     _getOdooSuggestions: function (value, isVAT) {
         var method = isVAT ? 'read_by_vat' : 'autocomplete';
 
-        var def = rpc.query({
+        var def = this._rpc({
             model: 'res.partner',
             method: method,
             args: [value],
@@ -282,63 +293,39 @@ return {
 
     /**
      * Utility to wait for multiple promises
-     * $.when will reject all promises whenever a promise is rejected
+     * Promise.all will reject all promises whenever a promise is rejected
      * This utility will continue
-     * Source : https://gist.github.com/fearphage/4341799
      *
-     * @param array
-     * @returns {*}
+     * @param {Promise[]} promises
+     * @returns {Promise}
      * @private
      */
-    _whenAll: function (array) {
-        var slice = [].slice;
+    _whenAll: function (promises) {
+        return Promise.all(promises.map(function (p) {
+            return Promise.resolve(p);
+        }));
+    },
 
-        var
-            resolveValues = arguments.length === 1 && $.isArray(array)
-                ? array
-                : slice.call(arguments)
-            , length = resolveValues.length
-            , remaining = length
-            , deferred = $.Deferred()
-            , i = 0
-            , failed = 0
-            , rejectContexts = Array(length)
-            , rejectValues = Array(length)
-            , resolveContexts = Array(length)
-            , value
-        ;
-
-        function updateFunc(index, contexts, values) {
-            return function () {
-                !(values === resolveValues) && failed++;
-                deferred.notifyWith(
-                    contexts[index] = this
-                    , values[index] = slice.call(arguments)
-                );
-                if (!(--remaining)) {
-                    deferred[(!failed ? 'resolve' : 'reject') + 'With'](contexts, values);
-                }
-            };
-        }
-
-        for (; i < length; i++) {
-            if ((value = resolveValues[i]) && $.isFunction(value.promise)) {
-                value.promise()
-                    .done(updateFunc(i, resolveContexts, resolveValues))
-                    .fail(updateFunc(i, rejectContexts, rejectValues))
-                ;
-            }
-            else {
-                deferred.notifyWith(this, value);
-                --remaining;
-            }
-        }
-
-        if (!remaining) {
-            deferred.resolveWith(resolveContexts, resolveValues);
-        }
-
-        return deferred.promise();
+    /**
+     * @private
+     * @returns {Promise}
+     */
+    _notifyNoCredits: function () {
+        var self = this;
+        return this._rpc({
+            model: 'iap.account',
+            method: 'get_credits_url',
+            args: ['partner_autocomplete'],
+        }).then(function (url) {
+            var title = _t('Not enough credits for Partner Autocomplete');
+            var content = Qweb.render('partner_autocomplete.insufficient_credit_notification', {
+                credits_url: url
+            });
+            self.do_notify(title, content, false, 'o_partner_autocomplete_no_credits_notify');
+        });
     },
 };
+
+return PartnerAutocompleteMixin;
+
 });

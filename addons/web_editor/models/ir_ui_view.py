@@ -7,7 +7,6 @@ from lxml import etree, html
 
 from odoo.exceptions import AccessError
 from odoo import api, fields, models
-from odoo.tools import pycompat
 
 _logger = logging.getLogger(__name__)
 
@@ -117,7 +116,7 @@ class IrUiView(models.Model):
             return False
         if len(arch1) != len(arch2):
             return False
-        return all(self._are_archs_equal(arch1, arch2) for arch1, arch2 in pycompat.izip(arch1, arch2))
+        return all(self._are_archs_equal(arch1, arch2) for arch1, arch2 in zip(arch1, arch2))
 
     @api.multi
     def replace_arch_section(self, section_xpath, replacement, replace_tail=False):
@@ -160,6 +159,10 @@ class IrUiView(models.Model):
         out.tail = el.tail
         return out
 
+    @api.model
+    def _set_noupdate(self):
+        self.sudo().mapped('model_data_id').write({'noupdate': True})
+
     @api.multi
     def save(self, value, xpath=None):
         """ Update a view section. The view section may embed fields to write
@@ -196,22 +199,18 @@ class IrUiView(models.Model):
         new_arch = self.replace_arch_section(xpath, arch_section)
         old_arch = etree.fromstring(self.arch.encode('utf-8'))
         if not self._are_archs_equal(old_arch, new_arch):
-            self.sudo().model_data_id.write({'noupdate': True}) # TODO check if we remove this
+            self._set_noupdate()
             self.write({'arch': self._pretty_arch(new_arch)})
 
     @api.model
     def _view_get_inherited_children(self, view, options):
-        extensions = view.inherit_children_ids
-        if not options:
-            # only active children
-            extensions = extensions.filtered(lambda view: view.active)
-        return extensions
+        return view.inherit_children_ids
 
     @api.model
     def _view_obj(self, view_id):
-        if isinstance(view_id, pycompat.string_types):
+        if isinstance(view_id, str):
             return self.search([('key', '=', view_id)], limit=1) or self.env.ref(view_id)
-        elif isinstance(view_id, pycompat.integer_types):
+        elif isinstance(view_id, int):
             return self.browse(view_id)
         # It can already be a view object when called by '_views_get()' that is calling '_view_obj'
         # for it's inherit_children_ids, passing them directly as object record.
@@ -253,6 +252,9 @@ class IrUiView(models.Model):
                 views_to_return += self._views_get(called_view, options=options, bundles=bundles)
 
         extensions = self._view_get_inherited_children(view, options)
+        if not options:
+            # only active children
+            extensions = extensions.filtered(lambda view: view.active)
 
         # Keep options in a deterministic order regardless of their applicability
         for extension in extensions.sorted(key=lambda v: v.id):
@@ -269,5 +271,6 @@ class IrUiView(models.Model):
             ``bundles=True`` returns also the asset bundles
         """
         user_groups = set(self.env.user.groups_id)
-        views = self.with_context(active_test=False)._views_get(key, bundles=bundles)
+        View = self.with_context(active_test=False, lang=None)
+        views = View._views_get(key, bundles=bundles)
         return views.filtered(lambda v: not v.groups_id or len(user_groups.intersection(v.groups_id)))

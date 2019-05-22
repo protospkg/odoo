@@ -16,7 +16,7 @@ if (!config.device.isMobile) {
  * Overrides Discuss module in mobile
  */
 Discuss.include({
-    template: 'mail.discuss_mobile',
+    contentTemplate: 'mail.discuss_mobile',
     events: _.extend(Discuss.prototype.events, {
         'click .o_mail_mobile_tab': '_onMobileTabClicked',
         'click .o_mailbox_inbox_item': '_onMobileInboxButtonClicked',
@@ -60,6 +60,13 @@ Discuss.include({
     //--------------------------------------------------------------------------
 
     /**
+     * @override
+     * @private
+     */
+    _initThreads: function () {
+        return this._updateThreads();
+    },
+    /**
      * @private
      * @returns {Boolean} true iff we currently are in the Inbox tab
      */
@@ -73,7 +80,7 @@ Discuss.include({
     _renderButtons: function () {
         var self = this;
         this._super.apply(this, arguments);
-        _.each(['dm_chat', 'public', 'private'], function (type) {
+        _.each(['dm_chat', 'multi_user_channel'], function (type) {
             var selector = '.o_mail_discuss_button_' + type;
             self.$buttons.on('click', selector, self._onAddThread.bind(self));
         });
@@ -109,7 +116,7 @@ Discuss.include({
         this._thread = thread;
         if (thread.getType() !== 'mailbox') {
             this.call('mail_service', 'openThreadWindow', threadID);
-            return $.when();
+            return Promise.resolve();
         } else {
             return this._super.apply(this, arguments);
         }
@@ -172,7 +179,7 @@ Discuss.include({
             });
             def = this.call('mail_service', 'getChannelPreviews', channels);
         }
-        return $.when(def).then(function (previews) {
+        return Promise.resolve(def).then(function (previews) {
             // update content
             if (inMailbox) {
                 if (!previouslyInInbox) {

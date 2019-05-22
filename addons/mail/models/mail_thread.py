@@ -26,6 +26,7 @@ from werkzeug import url_encode
 from werkzeug import urls
 
 from odoo import _, api, exceptions, fields, models, tools
+from odoo.osv import expression
 from odoo.tools import pycompat, ustr
 from odoo.tools.misc import clean_context
 from odoo.tools.safe_eval import safe_eval
@@ -109,8 +110,8 @@ class MailThread(models.AbstractModel):
     message_has_error_counter = fields.Integer(
         'Number of error', compute='_compute_message_has_error',
         help="Number of messages with delivery error")
-    message_attachment_count = fields.Integer('Attachment Count', compute='_compute_message_attachment_count')
-    message_main_attachment_id = fields.Many2one(string="Main Attachment", comodel_name='ir.attachment', index=True)
+    message_attachment_count = fields.Integer('Attachment Count', compute='_compute_message_attachment_count', groups="base.group_user")
+    message_main_attachment_id = fields.Many2one(string="Main Attachment", comodel_name='ir.attachment', index=True, copy=False)
 
     @api.one
     @api.depends('message_follower_ids')
@@ -237,7 +238,7 @@ class MailThread(models.AbstractModel):
 
     @api.model
     def _search_message_has_error(self, operator, operand):
-        return [('message_ids.has_error', operator, operand)]
+        return ['&', ('message_ids.has_error', operator, operand), ('message_ids.author_id', '=', self.env.user.partner_id.id)]
 
     @api.multi
     def _compute_message_attachment_count(self):
@@ -272,31 +273,38 @@ class MailThread(models.AbstractModel):
 
         threads = super(MailThread, self).create(vals_list)
 
-        # automatic logging unless asked not to (mainly for various testing purpose)
-        if not self._context.get('mail_create_nolog'):
-            doc_name = self.env['ir.model']._get(self._name).name
-            for thread in threads:
-                thread._message_log(body=_('%s created') % doc_name)
-
         # auto_subscribe: take values and defaults into account
-        for thread, values in pycompat.izip(threads, vals_list):
+        create_values_list = {}
+        for thread, values in zip(threads, vals_list):
             create_values = dict(values)
             for key, val in self._context.items():
                 if key.startswith('default_') and key[8:] not in create_values:
                     create_values[key[8:]] = val
             thread._message_auto_subscribe(create_values)
+            create_values_list[thread.id] = create_values
 
-        # track values
+        # automatic logging unless asked not to (mainly for various testing purpose)
+        if not self._context.get('mail_create_nolog'):
+            doc_name = self.env['ir.model']._get(self._name).name
+            for thread in threads:
+                subtype = thread._creation_subtype()
+                body = _('%s created') % doc_name
+                if subtype:  # if we have a sybtype, post message to notify users from _message_auto_subscribe
+                    thread.sudo().message_post(body=body, subtype_id=subtype.id, author_id=self.env.user.partner_id.id, )
+                else:
+                    thread._message_log(body=body)  # todo optimise email_from
+
+        # post track template if a tracked field changed
         if not self._context.get('mail_notrack'):
-            if 'lang' not in self._context:
-                track_threads = threads.with_context(lang=self.env.user.lang)
-            else:
-                track_threads = threads
-            for thread, values in pycompat.izip(track_threads, vals_list):
-                tracked_fields = thread._get_tracked_fields(list(values))
-                if tracked_fields:
-                    initial_values = {thread.id: dict.fromkeys(tracked_fields, False)}
-                    thread.message_track(tracked_fields, initial_values)
+            track_threads = threads.with_lang()
+            for thread in track_threads:
+                create_values = create_values_list[thread.id]
+                tracked_fields = self._get_tracked_fields(list(create_values))
+                changes = [field for field in tracked_fields if create_values.get(field)]
+                # based on tracked field to stay consistent with write
+                # we don't consider that a falsy field is a change, to stay consistent with previous implementation,
+                # but we may want to change that behaviour later.
+                thread._message_track_post_template(changes)
 
         return threads
 
@@ -306,11 +314,8 @@ class MailThread(models.AbstractModel):
             return super(MailThread, self).write(values)
 
         # Track initial values of tracked fields
-        if 'lang' not in self._context:
-            track_self = self.with_context(lang=self.env.user.lang)
-        else:
-            track_self = self
-
+        track_self = self.with_lang()
+        
         tracked_fields = None
         if not self._context.get('mail_notrack'):
             tracked_fields = track_self._get_tracked_fields(list(values))
@@ -326,8 +331,10 @@ class MailThread(models.AbstractModel):
 
         # Perform the tracking
         if tracked_fields:
-            track_self.with_context(clean_context(self._context)).message_track(tracked_fields, initial_values)
-
+            tracking = track_self.with_context(clean_context(self._context)).message_track(tracked_fields, initial_values)
+            if any(change for rec_id, (change, tracking_value_ids) in tracking.items()):
+                (changes, tracking_value_ids) = tracking[track_self[0].id]
+                track_self._message_track_post_template(changes)
         return result
 
     @api.multi
@@ -378,7 +385,7 @@ class MailThread(models.AbstractModel):
                 alias = aliases[0]
 
         if alias:
-            email_link = "<a href='mailto:%(email)s'>%(email)s</a>" % {'email': alias.name_get()[0][1]}
+            email_link = "<a href='mailto:%(email)s'>%(email)s</a>" % {'email': alias.display_name}
             if nothing_here:
                 return "<p class='o_view_nocontent_smiling_face'>%(dyn_help)s</p>" % {
                     'dyn_help': _("Add a new %(document)s or send an email to %(email_link)s") % {
@@ -423,6 +430,11 @@ class MailThread(models.AbstractModel):
     # ------------------------------------------------------
     # Technical methods / wrappers / tools
     # ------------------------------------------------------
+
+    def with_lang(self):
+        if 'lang' not in self._context:
+            return self.with_context(lang=self.env.user.lang)
+        return self
 
     def _replace_local_links(self, html, base_url=None):
         """ Replace local links by absolute links. It is required in various
@@ -547,52 +559,49 @@ class MailThread(models.AbstractModel):
         """
         tracked_fields = []
         for name, field in self._fields.items():
-            if getattr(field, 'track_visibility', False):
+            tracking = getattr(field, 'tracking', None) or getattr(field, 'track_visibility', None)
+            if tracking:
                 tracked_fields.append(name)
 
         if tracked_fields:
             return self.fields_get(tracked_fields)
         return {}
 
+    def _creation_subtype(self):
+        """ Give the subtypes triggered by the creation of a record
+
+        :returns: a subtype browse record or False if no subtype is trigerred
+        """
+
     @api.multi
     def _track_subtype(self, init_values):
         """ Give the subtypes triggered by the changes on the record according
         to values that have been updated.
 
-        :param ids: list of a single ID, the ID of the record being modified
-        :type ids: singleton list
         :param init_values: the original values of the record; only modified fields
                             are present in the dict
         :type init_values: dict
-        :returns: a subtype xml_id or False if no subtype is trigerred
+        :returns: a subtype browse record or False if no subtype is trigerred
         """
         return False
 
     @api.multi
-    def _track_template(self, tracking):
+    def _track_template(self, changes):
         return dict()
 
     @api.multi
-    def _message_track_post_template(self, tracking):
-        if not any(change for rec_id, (change, tracking_value_ids) in tracking.items()):
+    def _message_track_post_template(self, changes):
+        if not changes:
             return True
-        templates = self._track_template(tracking)
+        templates = self._track_template(changes)
         for field_name, (template, post_kwargs) in templates.items():
             if not template:
                 continue
-            if isinstance(template, pycompat.string_types):
+            if isinstance(template, str):
                 self.message_post_with_view(template, **post_kwargs)
             else:
                 self.message_post_with_template(template.id, **post_kwargs)
         return True
-
-    @api.multi
-    def _message_track_get_changes(self, tracked_fields, initial_values):
-        """ Batch method of _message_track. """
-        result = dict()
-        for record in self:
-            result[record.id] = record._message_track(tracked_fields, initial_values[record.id])
-        return result
 
     @api.multi
     def _message_track(self, tracked_fields, initial):
@@ -600,7 +609,7 @@ class MailThread(models.AbstractModel):
         and initial values, return a structure that is a tuple containing :
 
          - a set of updated column names
-         - a list of changes (initial value, new value, column name, column info) """
+         - a list of ORM (0, 0, values) commands to create 'mail.tracking.value' """
         self.ensure_one()
         changes = set()  # contains onchange tracked fields that changed
         tracking_value_ids = []
@@ -608,16 +617,17 @@ class MailThread(models.AbstractModel):
         # generate tracked_values data structure: {'col_name': {col_info, new_value, old_value}}
         for col_name, col_info in tracked_fields.items():
             initial_value = initial[col_name]
-            new_value = getattr(self, col_name)
+            new_value = self[col_name]
 
             if new_value != initial_value and (new_value or initial_value):  # because browse null != False
-                track_sequence = getattr(self._fields[col_name], 'track_sequence', 100)
-                tracking = self.env['mail.tracking.value'].create_tracking_values(initial_value, new_value, col_name, col_info, track_sequence)
+                tracking_sequence = getattr(self._fields[col_name], 'tracking',
+                                            getattr(self._fields[col_name], 'track_sequence', 100))  # backward compatibility with old parameter name
+                if tracking_sequence is True:
+                    tracking_sequence = 100
+                tracking = self.env['mail.tracking.value'].create_tracking_values(initial_value, new_value, col_name, col_info, tracking_sequence)
                 if tracking:
                     tracking_value_ids.append([0, 0, tracking])
-
-                if col_name in tracked_fields:
-                    changes.add(col_name)
+                changes.add(col_name)
 
         return changes, tracking_value_ids
 
@@ -630,30 +640,29 @@ class MailThread(models.AbstractModel):
         if not tracked_fields:
             return True
 
-        tracking = self._message_track_get_changes(tracked_fields, initial_values)
+        tracking = dict()
+        for record in self:
+            tracking[record.id] = record._message_track(tracked_fields, initial_values[record.id])
+
         for record in self:
             changes, tracking_value_ids = tracking[record.id]
             if not changes:
                 continue
 
             # find subtypes and post messages or log if no subtype found
-            subtype_xmlid = False
+            subtype = False
             # By passing this key, that allows to let the subtype empty and so don't sent email because partners_to_notify from mail_message._notify will be empty
             if not self._context.get('mail_track_log_only'):
-                subtype_xmlid = record._track_subtype(dict((col_name, initial_values[record.id][col_name]) for col_name in changes))
-
-            if subtype_xmlid:
-                subtype_rec = self.env.ref(subtype_xmlid)  # TDE FIXME check for raise if not found
-                if not (subtype_rec and subtype_rec.exists()):
-                    _logger.debug('subtype %s not found' % subtype_xmlid)
+                subtype = record._track_subtype(dict((col_name, initial_values[record.id][col_name]) for col_name in changes))
+            if subtype:
+                if not subtype.exists():
+                    _logger.debug('subtype "%s" not found' % subtype.name)
                     continue
-                record.message_post(subtype=subtype_xmlid, tracking_value_ids=tracking_value_ids)
+                record.message_post(subtype_id=subtype.id, tracking_value_ids=tracking_value_ids)
             elif tracking_value_ids:
                 record._message_log(tracking_value_ids=tracking_value_ids)
 
-        self._message_track_post_template(tracking)
-
-        return True
+        return tracking
 
     # ------------------------------------------------------
     # Email Notification
@@ -742,7 +751,8 @@ class MailThread(models.AbstractModel):
         access_link = self._notify_get_action_link('view')
 
         if message.model:
-            model_name = self.env['ir.model']._get(message.model).display_name
+            model = self.with_lang().env['ir.model']
+            model_name = model._get(message.model).display_name
             view_title = _('View %s') % model_name
         else:
             view_title = _('View')
@@ -858,7 +868,7 @@ class MailThread(models.AbstractModel):
                     result_email.update(dict((rid, '%s@%s' % (catchall, alias_domain)) for rid in left_ids))
 
             # compute name of reply-to - TDE tocheck: quotes and stuff like that
-            company_name = company.name if company else self.env.user.company_id.name
+            company_name = company.name if company else self.env.company_id.name
             for res_id in result_email.keys():
                 name = '%s%s%s' % (company_name, ' ' if doc_names.get(res_id) else '', doc_names.get(res_id, ''))
                 result[res_id] = formataddr((name, result_email[res_id]))
@@ -927,13 +937,6 @@ class MailThread(models.AbstractModel):
     # ------------------------------------------------------
     # Mail gateway
     # ------------------------------------------------------
-
-    def _message_find_partners(self, message, header_fields=['From']):
-        """ Find partners related to some header fields of the message.
-
-            :param string message: an email.message instance """
-        s = ', '.join([tools.decode_smtp_header(message.get(h)) for h in header_fields if message.get(h)])
-        return [x for x in self._find_partner_from_emails(tools.email_split(s)) if x]
 
     def _routing_warn(self, error_message, warn_suffix, message_id, route, raise_exception):
         """ Tools method used in message_route_verify: whether to log a warning or raise an error """
@@ -1054,9 +1057,9 @@ class MailThread(models.AbstractModel):
 
         # Update message author if asked. We do it now because we need it for aliases (contact settings)
         if not author_id and update_author:
-            author_ids = self.env['mail.thread']._find_partner_from_emails([email_from], res_model=model, res_id=thread_id)
-            if author_ids:
-                message_dict['author_id'] = author_ids[0]
+            authors = self._mail_find_partner_from_emails([email_from], records=record_set)
+            if authors:
+                message_dict['author_id'] = authors[0].id
 
         # Alias: check alias_contact settings
         if alias:
@@ -1175,7 +1178,7 @@ class MailThread(models.AbstractModel):
                     if partner_address:
                         partners = partners.sudo().search([('email', '=', partner_address)])
                         for partner in partners:
-                            partner.message_receive_bounce(partner_address, partner, mail_id=bounced_mail_id)
+                            partner._message_receive_bounce(partner_address, partner, mail_id=bounced_mail_id)
 
                 mail_message = self.env['mail.message']
                 if email_part:
@@ -1191,8 +1194,8 @@ class MailThread(models.AbstractModel):
                         'email_status': 'bounce'
                     })
 
-                if bounced_model in self.env and hasattr(self.env[bounced_model], 'message_receive_bounce') and bounced_thread_id:
-                    self.env[bounced_model].browse(int(bounced_thread_id)).message_receive_bounce(partner_address, partners, mail_id=bounced_mail_id)
+                if bounced_model in self.env and hasattr(self.env[bounced_model], '_message_receive_bounce') and bounced_thread_id:
+                    self.env[bounced_model].browse(int(bounced_thread_id))._message_receive_bounce(partner_address, partners, mail_id=bounced_mail_id)
 
                 _logger.info('Routing mail from %s to %s with Message-Id %s: bounced mail from mail %s, model: %s, thread_id: %s: dest %s (partner %s)',
                              email_from, email_to, message_id, bounced_mail_id, bounced_model, bounced_thread_id, partner_address, partners)
@@ -1251,7 +1254,7 @@ class MailThread(models.AbstractModel):
                 body = self.env.ref('mail.mail_bounce_catchall').render({
                     'message': message,
                 }, engine='ir.qweb')
-                self._routing_create_bounce_email(email_from, body, message, reply_to=self.env.user.company_id.email)
+                self._routing_create_bounce_email(email_from, body, message, reply_to=self.env.company_id.email)
                 return []
 
             dest_aliases = Alias.search([('alias_name', 'in', rcpt_tos_localparts)])
@@ -1306,6 +1309,7 @@ class MailThread(models.AbstractModel):
         original_partner_ids = message_dict.pop('partner_ids', [])
         thread_id = False
         for model, thread_id, custom_values, user_id, alias in routes or ():
+            subtype_id = False
             if model:
                 Model = self.env[model]
                 if not (thread_id and hasattr(Model, 'message_update') or hasattr(Model, 'message_new')):
@@ -1325,6 +1329,8 @@ class MailThread(models.AbstractModel):
                     message_dict.pop('parent_id', None)
                     thread = MessageModel.message_new(message_dict, custom_values)
                     thread_id = thread.id
+                    subtype = thread._creation_subtype()
+                    subtype_id = subtype.id if subtype else False
             else:
                 if thread_id:
                     raise ValueError("Posting a message without model should be with a null res_id, to create a private message.")
@@ -1333,15 +1339,17 @@ class MailThread(models.AbstractModel):
             # replies to internal message are considered as notes, but parent message
             # author is added in recipients to ensure he is notified of a private answer
             partner_ids = []
-            if message_dict.pop('internal', False):
-                subtype = 'mail.mt_note'
-                if message_dict.get('parent_id'):
-                    parent_message = self.env['mail.message'].sudo().browse(message_dict['parent_id'])
-                    partner_ids = [(4, parent_message.author_id.id)]
-            else:
-                subtype = 'mail.mt_comment'
+            if not subtype_id:
+                if message_dict.pop('internal', False):
+                    subtype_id = self.env['ir.model.data'].xmlid_to_res_id('mail.mt_note')
+                    if message_dict.get('parent_id'):
+                        parent_message = self.env['mail.message'].sudo().browse(message_dict['parent_id'])
+                        if parent_message.author_id:
+                            partner_ids = [(4, parent_message.author_id.id)]
+                else:
+                    subtype_id = self.env['ir.model.data'].xmlid_to_res_id('mail.mt_comment')
 
-            post_params = dict(subtype=subtype, partner_ids=partner_ids, **message_dict)
+            post_params = dict(subtype_id=subtype_id, partner_ids=partner_ids, **message_dict)
             if not hasattr(thread, 'message_post'):
                 post_params['model'] = model
             new_msg = thread.message_post(**post_params)
@@ -1392,15 +1400,9 @@ class MailThread(models.AbstractModel):
         # convert it to utf-8 for transport between the mailgate script and here.
         if isinstance(message, xmlrpclib.Binary):
             message = bytes(message.data)
-        # message_from_string parses from a *native string*, except apparently
-        # sometimes message is ISO-8859-1 binary data or some shit and the
-        # straightforward version (pycompat.to_native) won't work right ->
-        # always encode message to bytes then use the relevant method
-        # depending on ~python version
-        if isinstance(message, pycompat.text_type):
+        if isinstance(message, str):
             message = message.encode('utf-8')
-        extract = getattr(email, 'message_from_bytes', email.message_from_string)
-        msg_txt = extract(message)
+        msg_txt = email.message_from_bytes(message)
 
         # parse the message, verify we are not in a loop by checking message_id is not duplicated
         msg = self.message_parse(msg_txt, save_original=save_original)
@@ -1467,20 +1469,21 @@ class MailThread(models.AbstractModel):
         return True
 
     @api.multi
-    def message_receive_bounce(self, email, partner, mail_id=None):
+    def _message_receive_bounce(self, email, partner, mail_id=None):
         """Called by ``message_process`` when a bounce email (such as Undelivered
         Mail Returned to Sender) is received for an existing thread. The default
-        behavior is to check is an integer  ``message_bounce`` column exists.
+        behavior is to do nothing. This method is meant to be overridden in various
+        modules to add some specific behavior like blacklist management or mass
+        mailing statistics update. check is an integer  ``message_bounce`` column exists.
         If it is the case, its content is incremented.
 
+        :param record partner: partner matching the bounced email address, if any;
+        :param string email: email that caused the bounce;
         :param mail_id: ID of the sent email that bounced. It may not exist anymore
-                        but it could be usefull if the information was kept. This is
-                        used notably in mass mailing.
-        :param RecordSet partner: partner matching the bounced email address, if any
-        :param string email: email that caused the bounce """
-        if 'message_bounce' in self._fields:
-            for record in self:
-                record.message_bounce = record.message_bounce + 1
+                        but it could be useful if the information was kept. This is
+                        used notably in mass mailing;
+        """
+        pass
 
     def _message_extract_payload_postprocess(self, message, body, attachments):
         """ Perform some cleaning / postprocess in the body and attachments
@@ -1514,8 +1517,7 @@ class MailThread(models.AbstractModel):
         for node in to_remove:
             node.getparent().remove(node)
         if postprocessed:
-            body = etree.tostring(root, pretty_print=False, encoding='UTF-8')
-            body = pycompat.to_native(body)
+            body = etree.tostring(root, pretty_print=False, encoding='unicode')
         return body, attachments
 
     def _message_extract_payload(self, message, save_original=False):
@@ -1627,7 +1629,7 @@ class MailThread(models.AbstractModel):
         }
         if not isinstance(message, Message):
             # message_from_string works on a native str
-            message = pycompat.to_native(message)
+            message = pycompat.to_text(message)
             message = email.message_from_string(message)
 
         message_id = message['message-id']
@@ -1645,7 +1647,8 @@ class MailThread(models.AbstractModel):
         msg_dict['to'] = tools.decode_smtp_header(message.get('to'))
         msg_dict['cc'] = tools.decode_smtp_header(message.get('cc'))
         msg_dict['email_from'] = tools.decode_smtp_header(message.get('from'))
-        partner_ids = self._message_find_partners(message, ['To', 'Cc'])
+        recipient_emails = ', '.join([tools.decode_smtp_header(message.get(h)) for h in ['To', 'Cc'] if message.get(h)])
+        partner_ids = [x.id for x in self._mail_find_partner_from_emails(tools.email_split(recipient_emails), records=self) if x]
         msg_dict['partner_ids'] = [(4, partner_id) for partner_id in partner_ids]
 
         if message.get('Date'):
@@ -1686,37 +1689,39 @@ class MailThread(models.AbstractModel):
     # Recipient management
     # ------------------------------------------------------
 
-    @api.multi
-    def message_get_default_recipients(self, res_model=None, res_ids=None):
-        if res_model and res_ids:
-            if hasattr(self.env[res_model], 'message_get_default_recipients'):
-                return self.env[res_model].browse(res_ids).message_get_default_recipients()
-            records = self.env[res_model].sudo().browse(res_ids)
-        else:
-            records = self.sudo()
+    @api.model
+    def _message_get_default_recipients_on_records(self, records):
+        """ Generic implementation for finding default recipient to mail on
+        a recordset. ``_message_get_default_recipients`` may be defined to
+        implement custom behavior. """
+        if hasattr(records, '_message_get_default_recipients'):
+            return records._message_get_default_recipients()
+
         res = {}
         for record in records:
-            recipient_ids, email_to, email_cc = set(), False, False
-            if 'partner_id' in self._fields and record.partner_id:
-                recipient_ids.add(record.partner_id.id)
-            elif 'email_from' in self._fields and record.email_from:
+            recipient_ids, email_to, email_cc = [], False, False
+            if 'partner_id' in record and record.partner_id:
+                recipient_ids.append(record.partner_id.id)
+            elif 'email_normalized' in record and record.email_normalized:
+                email_to = record.email_normalized
+            elif 'email_from' in record and record.email_from:
                 email_to = record.email_from
-            elif 'partner_email' in self._fields and record.partner_email:
+            elif 'partner_email' in record and record.partner_email:
                 email_to = record.partner_email
-            elif 'email' in self._fields:
+            elif 'email' in record and record.email:
                 email_to = record.email
-            res[record.id] = {'partner_ids': list(recipient_ids), 'email_to': email_to, 'email_cc': email_cc}
+            res[record.id] = {'partner_ids': recipient_ids, 'email_to': email_to, 'email_cc': email_cc}
         return res
 
     @api.multi
     def _message_add_suggested_recipient(self, result, partner=None, email=None, reason=''):
-        """ Called by message_get_suggested_recipients, to add a suggested
+        """ Called by _message_get_suggested_recipients, to add a suggested
             recipient in the result dictionary. The form is :
                 partner_id, partner_name<partner_email> or partner_name, reason """
         self.ensure_one()
         if email and not partner:
             # get partner info from email
-            partner_info = self.message_partner_info_from_emails([email])[0]
+            partner_info = self._message_partner_info_from_emails([email])[0]
             if partner_info.get('partner_id'):
                 partner = self.env['res.partner'].sudo().browse([partner_info['partner_id']])[0]
         if email and email in [val[1] for val in result[self.ids[0]]]:  # already existing email -> skip
@@ -1734,7 +1739,7 @@ class MailThread(models.AbstractModel):
         return result
 
     @api.multi
-    def message_get_suggested_recipients(self):
+    def _message_get_suggested_recipients(self):
         """ Returns suggested recipients for ids. Those are a list of
         tuple (partner_id, partner_name, reason), to be managed by Chatter. """
         result = dict((res_id, []) for res_id in self.ids)
@@ -1745,84 +1750,79 @@ class MailThread(models.AbstractModel):
                 obj._message_add_suggested_recipient(result, partner=obj.user_id.partner_id, reason=self._fields['user_id'].string)
         return result
 
-    def _search_on_user(self, email_address, extra_domain=[]):
+    def _mail_search_on_user(self, normalized_emails, extra_domain=False):
+        """ Find partners linked to users, given an email address that will
+        be normalized. Search is done as sudo on res.users model to avoid domain
+        on partner like ('user_ids', '!=', False) that would not be efficient. """
+        domain = [('email_normalized', 'in', normalized_emails)]
+        if extra_domain:
+            domain = expression.AND(domain, extra_domain)
         Users = self.env['res.users'].sudo()
-        # exact, case-insensitive match
-        partners = Users.search([('email', '=ilike', email_address)], limit=1).mapped('partner_id')
-        if not partners:
-            # if no match with addr-spec, attempt substring match within name-addr pair
-            email_brackets = "<%s>" % email_address
-            partners = Users.search([('email', 'ilike', email_brackets)], limit=1).mapped('partner_id')
-        return partners.id
+        partners = Users.search(domain).mapped('partner_id')
+        # return a search on partner to filter results current user should not see (multi company for example)
+        return self.env['res.partner'].search([('id', 'in', partners.ids)])
 
-    def _search_on_partner(self, email_address, extra_domain=[]):
-        Partner = self.env['res.partner'].sudo()
-        # exact, case-insensitive match
-        partners = Partner.search([('email', '=ilike', email_address)] + extra_domain, limit=1)
-        if not partners:
-            # if no match with addr-spec, attempt substring match within name-addr pair
-            email_brackets = "<%s>" % email_address
-            partners = Partner.search([('email', 'ilike', email_brackets)] + extra_domain, limit=1)
-        return partners.id
+    def _mail_search_on_partner(self, normalized_emails, extra_domain=False):
+        domain = [('email_normalized', 'in', normalized_emails)]
+        if extra_domain:
+            domain = expression.AND(domain, extra_domain)
+        return self.env['res.partner'].search(domain)
 
-    @api.multi
-    def _find_partner_from_emails(self, emails, res_model=None, res_id=None, check_followers=True, force_create=False, exclude_aliases=True):
-        """ Utility method to find partners from email addresses. The rules are :
-            1 - check in document (model | self, id) followers
-            2 - try to find a matching partner that is also an user
-            3 - try to find a matching partner
-            4 - create a new one if force_create = True
+    @api.model
+    def _mail_find_partner_from_emails(self, emails, records=None, force_create=False):
+        """ Utility method to find partners from email addresses. If no partner is
+        found, create new partners if force_create is enabled. Search heuristics
 
-            :param list emails: list of email addresses
-            :param string model: model to fetch related record; by default self
-                is used.
-            :param boolean check_followers: check in document followers
-            :param boolean force_create: create a new partner if not found
-            :param boolean exclude_aliases: do not try to find a partner that could match an alias. Normally aliases
-                                            should not be used as partner emails but it could be the case due to some
-                                            strange manipulation
+          * 1: check in records (record set) followers if records is mail.thread
+               enabled and if check_followers parameter is enabled;
+          * 2: search for partners with user;
+          * 3: search for partners;
+
+        :param records: record set on which to check followers;
+        :param list emails: list of email addresses for finding partner;
+        :param boolean force_create: create a new partner if not found
+
+        :return list partners: a list of partner records ordered as given emails.
+          If no partner has been found and/or created for a given emails its
+          matching partner is an empty record.
         """
-        if res_model is None:
-            res_model = self._name
-        if res_id is None and self.ids:
-            res_id = self.ids[0]
-        followers = self.env['res.partner']
-        if res_model and res_id:
-            record = self.env[res_model].browse(res_id)
-            if hasattr(record, 'message_partner_ids'):
-                followers = record.message_partner_ids
+        if records and issubclass(type(records), self.pool['mail.thread']):
+            followers = records.mapped('message_partner_ids')
+        else:
+            followers = self.env['res.partner']
+        catchall_domain = self.env['ir.config_parameter'].sudo().get_param("mail.catchall.domain")
 
-        partner_ids = []
+        # first, build a normalized email list and remove those linked to aliases to avoid adding aliases as partners
+        normalized_emails = [tools.email_normalize(contact) for contact in emails if tools.email_normalize(contact)]
+        if catchall_domain:
+            domain_left_parts = [email.split('@')[0] for email in normalized_emails if email and email.split('@')[1] == catchall_domain.lower()]
+            if domain_left_parts:
+                found_alias_names = self.env['mail.alias'].sudo().search([('alias_name', 'in', domain_left_parts)]).mapped('alias_name')
+                normalized_emails = [email for email in normalized_emails if email.split('@')[0] not in found_alias_names]
 
+        done_partners = [follower for follower in followers if follower.email_normalized in normalized_emails]
+        remaining = [email for email in normalized_emails if email not in [partner.email_normalized for partner in done_partners]]
+
+        user_partners = self._mail_search_on_user(remaining)
+        done_partners += [user_partner for user_partner in user_partners]
+        remaining = [email for email in normalized_emails if email not in [partner.email_normalized for partner in done_partners]]
+
+        partners = self._mail_search_on_partner(remaining)
+        done_partners += [partner for partner in partners]
+        remaining = [email for email in normalized_emails if email not in [partner.email_normalized for partner in done_partners]]
+
+        # iterate and keep ordering
+        partners = []
         for contact in emails:
-            partner_id = False
-            email_address = tools.email_split(contact)
-            if not email_address:
-                partner_ids.append(partner_id)
-                continue
-            if exclude_aliases and self.env['mail.alias'].search([('alias_name', 'ilike', email_address)], limit=1):
-                partner_ids.append(partner_id)
-                continue
-
-            email_address = email_address[0]
-            # Escape special SQL characters in email_address to avoid invalid matches
-            email_address = tools.email_escape_char(email_address)
-
-            # first try: check in document's followers
-            partner_id = next((partner.id for partner in followers if partner.email == email_address), False)
-            # second try: check in partners that are also users
-            if not partner_id:
-                partner_id = self._search_on_user(email_address)
-            # third try: check in partners
-            if not partner_id:
-                partner_id = self._search_on_partner(email_address)
-            if not partner_id and force_create:
-                partner_id = self.env['res.partner'].name_create(contact)[0]
-            partner_ids.append(partner_id)
-        return partner_ids
+            normalized_email = tools.email_normalize(contact)
+            partner = next((partner for partner in done_partners if partner.email_normalized == normalized_email), self.env['res.partner'])
+            if not partner and force_create and normalized_email in normalized_emails:
+                partner = self.env['res.partner'].name_create(contact)[0]
+            partners.append(partner)
+        return partners
 
     @api.multi
-    def message_partner_info_from_emails(self, emails, link_mail=False):
+    def _message_partner_info_from_emails(self, emails, link_mail=False):
         """ Convert a list of emails into a list partner_ids and a list
             new_partner_ids. The return value is non conventional because
             it is meant to be used by the mail widget.
@@ -1830,24 +1830,18 @@ class MailThread(models.AbstractModel):
             :return dict: partner_ids and new_partner_ids """
         self.ensure_one()
         MailMessage = self.env['mail.message'].sudo()
-        partner_ids = self._find_partner_from_emails(emails)
+        partners = self._mail_find_partner_from_emails(emails, records=self)
         result = list()
-        for idx in range(len(emails)):
-            email_address = emails[idx]
-            partner_id = partner_ids[idx]
-            partner_info = {'full_name': email_address, 'partner_id': partner_id}
+        for idx, contact in enumerate(emails):
+            partner = partners[idx]
+            partner_info = {'full_name': partner.email_formatted if partner else contact, 'partner_id': partner.id}
             result.append(partner_info)
             # link mail with this from mail to the new partner id
-            if link_mail and partner_info['partner_id']:
-                # Escape special SQL characters in email_address to avoid invalid matches
-                email_address = (email_address.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_'))
-                email_brackets = "<%s>" % email_address
+            if link_mail and partner:
                 MailMessage.search([
-                    '|',
-                    ('email_from', '=ilike', email_address),
-                    ('email_from', 'ilike', email_brackets),
+                    ('email_from', '=ilike', partner.email_normalized),
                     ('author_id', '=', False)
-                ]).write({'author_id': partner_info['partner_id']})
+                ]).write({'author_id': partner.id})
         return result
 
     # ------------------------------------------------------
@@ -1885,7 +1879,7 @@ class MailThread(models.AbstractModel):
                 cid = info and info.get('cid')
             else:
                 continue
-            if isinstance(content, pycompat.text_type):
+            if isinstance(content, str):
                 content = content.encode('utf-8')
             elif content is None:
                 continue
@@ -1936,7 +1930,7 @@ class MailThread(models.AbstractModel):
                 if False/0, mail.message model will also be set as False
             :param str body: body of the message, usually raw HTML that will
                 be sanitized
-            :param str type: see mail_message.type field
+            :param str type: see mail_message.message_type field
             :param int parent_id: handle reply to a previous message by adding the
                 parent partners to the message in case of private discussion
             :param tuple(str,str) attachments or list id: list of attachment tuples in the form
@@ -1979,7 +1973,7 @@ class MailThread(models.AbstractModel):
                 partner_ids.add(partner_id[1])
             if isinstance(partner_id, (list, tuple)) and partner_id[0] == 6 and len(partner_id) == 3:
                 partner_ids |= set(partner_id[2])
-            elif isinstance(partner_id, pycompat.integer_types):
+            elif isinstance(partner_id, int):
                 partner_ids.add(partner_id)
             else:
                 pass  # we do not manage anything else
@@ -2069,7 +2063,7 @@ class MailThread(models.AbstractModel):
             prioritary_attachments = all_attachments.filtered(lambda x: x.mimetype.endswith('pdf')) \
                                      or all_attachments.filtered(lambda x: x.mimetype.startswith('image')) \
                                      or all_attachments
-            self.write({'message_main_attachment_id': prioritary_attachments[0].id})
+            self.sudo().write({'message_main_attachment_id': prioritary_attachments[0].id})
         # Notify recipients of the newly-created message (Inbox / Email + channels)
         if msg_vals.get('moderation_status') != 'pending_moderation':
             message._notify(
@@ -2099,7 +2093,7 @@ class MailThread(models.AbstractModel):
             values['slug'] = slug
         except ImportError:
             values['slug'] = lambda self: self.id
-        if isinstance(views_or_xmlid, pycompat.string_types):
+        if isinstance(views_or_xmlid, str):
             views = self.env.ref(views_or_xmlid, raise_if_not_found=False)
         else:
             views = views_or_xmlid
@@ -2315,7 +2309,7 @@ class MailThread(models.AbstractModel):
         """
         fnames = []
         for name, field in self._fields.items():
-            if name == 'user_id' and updated_values.get(name) and getattr(field, 'track_visibility', False):
+            if name == 'user_id' and updated_values.get(name) and (getattr(field, 'track_visibility', False) or getattr(field, 'tracking', False)):
                 if field.comodel_name == 'res.users':
                     fnames.append(name)
 
@@ -2426,3 +2420,17 @@ class MailThread(models.AbstractModel):
             self._message_auto_subscribe_notify(pids, template)
 
         return True
+
+    def _get_mail_redirect_suggested_company(self):
+        """ Return the suggested company to be set on the context
+        in case of a mail redirection to the record. To avoid multi
+        company issues when clicking on a link sent by email, this
+        could be called to try setting the most suited company on
+        the allowed_company_ids in the context. This method can be 
+        overriden, for example on the hr.leave model, where the
+        most suited company is the company of the leave type, as
+        specified by the ir.rule.
+        """
+        if 'company_id' in self:
+            return self.company_id
+        return False

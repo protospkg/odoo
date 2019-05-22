@@ -98,6 +98,7 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         production_form.product_id = self.finished_product
         production_form.picking_type_id = self.warehouse.manu_type_id
         production = production_form.save()
+        production.action_confirm()
 
         move_raw_ids = production.move_raw_ids
         self.assertEqual(len(move_raw_ids), 1)
@@ -179,14 +180,14 @@ class TestMultistepManufacturingWarehouse(TestMrpCommon):
         self.assertTrue(self.env['stock.quant']._gather(self.raw_product, self.warehouse.pbm_loc_id))
 
         production_order.action_assign()
-        self.assertEqual(production_order.availability, 'assigned')
+        self.assertEqual(production_order.reservation_state, 'assigned')
         self.assertEqual(picking_stock_postprod.state, 'waiting')
 
         produce_form = Form(self.env['mrp.product.produce'].with_context({
             'active_id': production_order.id,
             'active_ids': [production_order.id],
         }))
-        produce_form.product_qty = production_order.product_qty
+        produce_form.qty_producing = production_order.product_qty
         product_produce = produce_form.save()
         product_produce.do_produce()
         production_order.button_mark_done()

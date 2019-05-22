@@ -292,11 +292,7 @@ def split_context(method, args, kwargs):
     """ Extract the context from a pair of positional and keyword arguments.
         Return a triple ``context, args, kwargs``.
     """
-    pos = len(getargspec(method).args) - 1
-    if pos < len(args):
-        return args[pos], args[:pos], kwargs
-    else:
-        return kwargs.pop('context', None), args, kwargs
+    return kwargs.pop('context', None), args, kwargs
 
 
 def model(method):
@@ -818,7 +814,7 @@ class Environment(Mapping):
 
     def __getitem__(self, model_name):
         """ Return an empty recordset from the given model. """
-        return self.registry[model_name]._browse((), self)
+        return self.registry[model_name]._browse(self, (), ())
 
     def __iter__(self):
         """ Return an iterator on model names. """
@@ -857,6 +853,39 @@ class Environment(Mapping):
     def user(self):
         """ return the current user (as an instance) """
         return self(user=SUPERUSER_ID)['res.users'].browse(self.uid)
+
+    @property
+    def company_id(self):
+        """ return the company in which the user is logged in (as an instance) """
+        try:
+            company_id = int(self.context.get('allowed_company_ids')[0])
+            if company_id in self.user.company_ids.ids:
+                return self['res.company'].browse(company_id)
+            return self.user.company_id
+        except Exception:
+            return self.user.company_id
+
+    @property
+    def company_ids(self):
+        """ return a recordset of the enabled companies by the user """
+        try:  # In case the user tries to bidouille the url (eg: cids=1,foo,bar)
+            allowed_company_ids = self.context.get('allowed_company_ids')
+            # Prevent the user to enable companies for which he doesn't have any access
+            users_company_ids = self.user.company_ids.ids
+            allowed_company_ids = [company_id for company_id in allowed_company_ids if company_id in users_company_ids]
+        except Exception:
+            # By setting the default companies to all user companies instead of the main one
+            # we save a lot of potential trouble in all "out of context" calls, such as
+            # /mail/redirect or /web/image, etc. And it is not unsafe because the user does
+            # have access to these other companies. The risk of exposing foreign records
+            # (wrt to the context) is low because all normal RPCs will have a proper
+            # allowed_company_ids.
+            # Examples:
+            #   - when printing a report for several records from several companies
+            #   - when accessing to a record from the notification email template
+            #   - when loading an binary image on a template
+            allowed_company_ids = self.user.company_ids.ids
+        return self['res.company'].browse(allowed_company_ids)
 
     @property
     def lang(self):
@@ -1036,7 +1065,7 @@ class Cache(object):
         """ Return the value of ``field`` for ``record``. """
         key = record.env.cache_key(field)
         try:
-            value = self._data[key][field][record.id]
+            value = self._data[key][field][record._ids[0]]
         except KeyError:
             raise CacheMiss(record, field)
 
@@ -1045,7 +1074,12 @@ class Cache(object):
     def set(self, record, field, value):
         """ Set the value of ``field`` for ``record``. """
         key = record.env.cache_key(field)
-        self._data[key][field][record.id] = value
+        self._data[key][field][record._ids[0]] = value
+
+    def update(self, records, field, values):
+        """ Set the values of ``field`` for several ``records``. """
+        key = records.env.cache_key(field)
+        self._data[key][field].update(zip(records._ids, values))
 
     def remove(self, record, field):
         """ Remove the value of ``field`` for ``record``. """
@@ -1063,6 +1097,14 @@ class Cache(object):
         key = record.env.cache_key(field)
         value = self._data[key][field].get(record.id, SpecialValue(None))
         return default if isinstance(value, SpecialValue) else value
+
+    def get_values(self, records, field, default=None):
+        """ Return the regular values of ``field`` for ``records``. """
+        key = records.env.cache_key(field)
+        field_cache = self._data[key][field]
+        for record_id in records._ids:
+            value = field_cache.get(record_id, SpecialValue(None))
+            yield default if isinstance(value, SpecialValue) else value
 
     def get_special(self, record, field, default=None):
         """ Return the special value of ``field`` for ``record``. """

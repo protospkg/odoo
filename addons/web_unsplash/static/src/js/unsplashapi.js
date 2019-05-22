@@ -27,18 +27,17 @@ var UnsplashCore = Class.extend(Mixins.EventDispatcherMixin, ServicesMixin, {
      *
      * @param {String} query search terms
      * @param {Integer} pageSize number of image to display per page
-     * @param {Integer} pageNumber page number to retrieve
+     * @returns {Promise}
      */
-    getImages: function (query, pageSize, pageNumber) {
-        var self = this;
-        var to = pageSize * pageNumber;
-        var from = to - pageSize;
+    getImages: function (query, pageSize) {
+        var from = 0;
+        var to = pageSize;
         var cachedData = this._cache[query];
 
         if (cachedData && (cachedData.images.length >= to || (cachedData.totalImages !== 0 && cachedData.totalImages < to))) {
-            return $.when({ images: cachedData.images.slice(from, to), isMaxed: to > cachedData.totalImages });
+            return Promise.resolve({ images: cachedData.images.slice(from, to), isMaxed: to > cachedData.totalImages });
         }
-        return self._fetchImages(query).then(function (cachedData) {
+        return this._fetchImages(query).then(function (cachedData) {
             return { images: cachedData.images.slice(from, to), isMaxed: to > cachedData.totalImages };
         });
     },
@@ -51,6 +50,7 @@ var UnsplashCore = Class.extend(Mixins.EventDispatcherMixin, ServicesMixin, {
      * Fetches images from unsplash and stores it in cache
      *
      * @param {String} query search terms
+     * @returns {Promise}
      * @private
      */
     _fetchImages: function (query) {
@@ -73,7 +73,7 @@ var UnsplashCore = Class.extend(Mixins.EventDispatcherMixin, ServicesMixin, {
             params: payload,
         }).then(function (result) {
             if (result.error) {
-                return $.Deferred().reject(result.error);
+                return Promise.reject(result.error);
             }
             cachedData.pageCached++;
             cachedData.images.push.apply(cachedData.images, result.results);

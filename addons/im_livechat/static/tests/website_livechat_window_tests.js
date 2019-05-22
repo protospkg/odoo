@@ -17,7 +17,7 @@ var Widget = require('web.Widget');
 QUnit.module('im_livechat', {}, function () {
 QUnit.module('Website Livechat Window', {});
 
-QUnit.test('basic rendering', function (assert) {
+QUnit.test('basic rendering', async function (assert) {
     assert.expect(3);
 
     var parent = new Widget();
@@ -45,16 +45,16 @@ QUnit.test('basic rendering', function (assert) {
     livechat.setMessages(messages);
 
     var chatWindow = new ChatWindow(parent, livechat);
-    testUtils.addMockEnvironment(parent, {});
-    chatWindow.appendTo($('#qunit-fixture'));
+    testUtils.mock.addMockEnvironment(parent, {});
+    await chatWindow.appendTo($('#qunit-fixture'));
     chatWindow.render();
 
-    assert.strictEqual(chatWindow.$('.o_thread_window_header').length, 1,
+    assert.containsOnce(chatWindow, '.o_thread_window_header',
         "should have a header");
     assert.strictEqual(chatWindow.$('.o_thread_window_header').text().replace(/\s/g, ""),
         "myLivechat(2)",
         "should display the correct livechat name and unread message counter");
-    assert.strictEqual(chatWindow.$('.o_thread_message').length, 2,
+    assert.containsN(chatWindow, '.o_thread_message', 2,
         "should display two messages");
 
     parent.destroy();

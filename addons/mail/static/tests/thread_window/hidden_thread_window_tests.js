@@ -43,17 +43,20 @@ QUnit.module('Hidden', {
                 self.services.mail_service.prototype.THREAD_WINDOW_APPENDTO = '#qunit-fixture';
             }
 
-            testUtils.addMockEnvironment(widget, params);
+            testUtils.mock.addMockEnvironment(widget, params);
             return widget;
         };
     },
     afterEach: function () {
+        // remove thread window dropup appended by mail service
+        var $target = $(this.services.mail_service.prototype.THREAD_WINDOW_APPENDTO);
+        $target.find('.o_thread_window_dropdown').remove();
         // reset thread window append to body
         this.services.mail_service.prototype.THREAD_WINDOW_APPENDTO = 'body';
     },
 });
 
-QUnit.test('hidden thread windows dropdown when not enough horizontal space (version 1)', function (assert) {
+QUnit.test('hidden thread windows dropdown when not enough horizontal space (version 1)', async function (assert) {
     // This test has hard-set global width, so that it does not depend on
     // the width of the screen: at most 2 thread windows visible at the
     // same time, and additional thread windows are in hidden while and
@@ -62,7 +65,7 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
     // single thread window.
     assert.expect(13);
 
-    testUtils.patch(this.services.mail_service, {
+    testUtils.mock.patch(this.services.mail_service, {
         HIDDEN_THREAD_WINDOW_DROPDOWN_BUTTON_WIDTH: 100,
         THREAD_WINDOW_WIDTH: 300,
         _getGlobalWidth: function () { return 800; },
@@ -87,9 +90,10 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
         data: this.data,
         services: this.services,
     });
-
+    await testUtils.nextTick();
     parent.call('mail_service', 'getChannel', 0).detach();
     parent.call('mail_service', 'getChannel', 1).detach();
+    await testUtils.nextTick();
 
     var $visibleThreadWindows = $('.o_thread_window:not(.o_thread_window_dropdown, .o_hidden)');
 
@@ -106,6 +110,7 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
 
     // detach a channel so that it exceeds available slots
     parent.call('mail_service', 'getChannel', 2).detach();
+    await testUtils.nextTick();
     // update list of visible thread windows
     $visibleThreadWindows = $('.o_thread_window:not(.o_thread_window_dropdown, .o_hidden)');
 
@@ -128,10 +133,10 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
         1, "should contain thread window with ID 1 in hidden dropdown menu");
 
     parent.destroy();
-    testUtils.unpatch(this.services.mail_service);
+    testUtils.mock.unpatch(this.services.mail_service);
 });
 
-QUnit.test('hidden thread windows dropdown when not enough horizontal space (version 2)', function (assert) {
+QUnit.test('hidden thread windows dropdown when not enough horizontal space (version 2)', async function (assert) {
     // This is almost the same test as the one before, except there are
     // at most 3 thread windows visible, and 2 thread windows are visible
     // when it shows the 'hidden thread window' button.
@@ -146,7 +151,7 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
     //    With button: 2 thread windows (2*250px + 100px = 600px < 800px)
     assert.expect(16);
 
-    testUtils.patch(this.services.mail_service, {
+    testUtils.mock.patch(this.services.mail_service, {
         HIDDEN_THREAD_WINDOW_DROPDOWN_BUTTON_WIDTH: 100,
         THREAD_WINDOW_WIDTH: 250,
         _getGlobalWidth: function () { return 800; },
@@ -171,10 +176,11 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
         data: this.data,
         services: this.services,
     });
-
+    await testUtils.nextTick();
     parent.call('mail_service', 'getChannel', 0).detach();
     parent.call('mail_service', 'getChannel', 1).detach();
     parent.call('mail_service', 'getChannel', 2).detach();
+    await testUtils.nextTick();
 
     var $visibleThreadWindows = $('.o_thread_window:not(.o_thread_window_dropdown, .o_hidden)');
 
@@ -193,6 +199,7 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
 
     // detach a channel so that it exceeds available slots
     parent.call('mail_service', 'getChannel', 3).detach();
+    await testUtils.nextTick();
     // update list of visible thread windows
     $visibleThreadWindows = $('.o_thread_window:not(.o_thread_window_dropdown, .o_hidden)');
 
@@ -219,7 +226,7 @@ QUnit.test('hidden thread windows dropdown when not enough horizontal space (ver
         1, "should contain thread window with ID 2 in hidden dropdown menu");
 
     parent.destroy();
-    testUtils.unpatch(this.services.mail_service);
+    testUtils.mock.unpatch(this.services.mail_service);
 });
 
 });

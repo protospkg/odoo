@@ -20,7 +20,7 @@ class Invite(models.TransientModel):
         if 'message' not in fields:
             return result
 
-        user_name = self.env.user.name_get()[0][1]
+        user_name = self.env.user.display_name
         model = result.get('res_model')
         res_id = result.get('res_id')
         if model and res_id:
@@ -62,9 +62,9 @@ class Invite(models.TransientModel):
             # send an email if option checked and if a message exists (do not send void emails)
             if wizard.send_mail and wizard.message and not wizard.message == '<br>':  # when deleting the message, cleditor keeps a <br>
                 message = self.env['mail.message'].create({
-                    'subject': _('Invitation to follow %s: %s') % (model_name, document.name_get()[0][1]),
+                    'subject': _('Invitation to follow %s: %s') % (model_name, document.display_name),
                     'body': wizard.message,
-                    'record_name': document.name_get()[0][1],
+                    'record_name': document.display_name,
                     'email_from': email_from,
                     'reply_to': email_from,
                     'model': wizard.res_model,

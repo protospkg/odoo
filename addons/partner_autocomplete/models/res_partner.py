@@ -90,8 +90,8 @@ class ResPartner(models.Model):
         params.update({
             'db_uuid': self.env['ir.config_parameter'].sudo().get_param('database.uuid'),
             'account_token': account.account_token,
-            'country_code': self.env.user.company_id.country_id.code,
-            'zip': self.env.user.company_id.zip,
+            'country_code': self.env.company_id.country_id.code,
+            'zip': self.env.company_id.zip,
         })
         try:
             return jsonrpc(url=url, params=params, timeout=timeout), False
@@ -123,9 +123,17 @@ class ResPartner(models.Model):
             'vat': vat,
         })
         if response and response.get('company_data'):
-            return self._format_data_company(response.get('company_data'))
+            result = self._format_data_company(response.get('company_data'))
         else:
-            return {}
+            result = {}
+
+        if error:
+            result.update({
+                'error': True,
+                'error_message': error
+            })
+
+        return result
 
     @api.model
     def read_by_vat(self, vat):

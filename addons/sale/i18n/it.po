@@ -23,7 +23,6 @@
 # David Minneci <david@numeko.it>, 2018
 # Martin Trigaux, 2018
 # Manuela Feliciani <mfeliciani@alice.it>, 2018
-# Lorenzo Battistini <lorenzo.battistini@agilebg.com>, 2018
 # Léonie Bouchat <lbo@odoo.com>, 2018
 # Sergio Zanchetta <primes2h@gmail.com>, 2018
 # 
@@ -143,13 +142,13 @@ msgid ""
 msgstr ""
 "<div style=\"margin: 0px; padding: 0px;\">\n"
 "    <p style=\"margin: 0px; padding: 0px; font-size: 13px;\">\n"
-"        % set doc_name = 'il preventivo' if object.state in ('draft', 'sent') else 'l\\'ordine'\n"
+"        % set doc_name = 'quotation' if object.state in ('draft', 'sent') else 'order'\n"
 "        Gentile ${object.partner_id.name}\n"
 "        % if object.partner_id.parent_id:\n"
 "            (${object.partner_id.parent_id.name})\n"
 "        % endif\n"
 "        <br/><br/>\n"
-"        Ecco\n"
+"        Troverà\n"
 "        % if ctx.get('proforma')\n"
 "            in allegato la Sua fattura proforma.\n"
 "        % else\n"
@@ -747,7 +746,7 @@ msgstr "Indietro"
 #. module: sale
 #: model:ir.model.fields,field_description:sale.field_sale_payment_acquirer_onboarding_wizard__journal_name
 msgid "Bank Name"
-msgstr "Nome banca"
+msgstr "Nome Banca"
 
 #. module: sale
 #: code:addons/sale/models/payment.py:14
@@ -950,7 +949,7 @@ msgstr "Configura un prodotto"
 #. module: sale
 #: model:ir.actions.act_window,name:sale.action_open_sale_onboarding_quotation_layout
 msgid "Configure your document layout"
-msgstr "Configurazione della struttura del documento"
+msgstr "Configura il layout del documento"
 
 #. module: sale
 #: model_terms:ir.ui.view,arch_db:sale.res_config_settings_view_form
@@ -1956,7 +1955,7 @@ msgstr "Bloccato"
 #. module: sale
 #: model_terms:ir.ui.view,arch_db:sale.onboarding_quotation_layout_step
 msgid "Looks great!"
-msgstr "Sembra perfetto!"
+msgstr "Sembra Perfetto!"
 
 #. module: sale
 #: model:ir.model.fields,field_description:sale.field_sale_order__message_main_attachment_id
@@ -2093,7 +2092,7 @@ msgstr "Nuovo preventivo"
 #. module: sale
 #: model:ir.model.fields,field_description:sale.field_sale_order__activity_date_deadline
 msgid "Next Activity Deadline"
-msgstr "Scadenza prossima attività"
+msgstr "Scadenza Prossima Attività"
 
 #. module: sale
 #: model:ir.model.fields,field_description:sale.field_sale_order__activity_summary
@@ -2480,18 +2479,18 @@ msgstr "Paga con"
 #. module: sale
 #: selection:sale.payment.acquirer.onboarding.wizard,payment_method:0
 msgid "Pay with PayPal"
-msgstr "Pagamento con PayPal"
+msgstr "Paga con PayPal"
 
 #. module: sale
 #: selection:res.company,sale_onboarding_payment_method:0
 #: selection:sale.payment.acquirer.onboarding.wizard,payment_method:0
 msgid "Pay with another payment acquirer"
-msgstr "Pagare con altro sistema di pagamento"
+msgstr "Paga con un altro metodo di pagamento"
 
 #. module: sale
 #: selection:sale.payment.acquirer.onboarding.wizard,payment_method:0
 msgid "Pay with credit card (via Stripe)"
-msgstr "Pagamento con carta di credito (via Stripe)"
+msgstr "Paga con una carta di credito (con Stripe)"
 
 #. module: sale
 #: selection:res.company,sale_onboarding_payment_method:0

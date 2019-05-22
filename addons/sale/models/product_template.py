@@ -23,12 +23,12 @@ class ProductTemplate(models.Model):
     sale_line_warn_msg = fields.Text('Message for Sales Order Line')
     expense_policy = fields.Selection(
         [('no', 'No'), ('cost', 'At cost'), ('sales_price', 'Sales price')],
-        string='Re-Invoice Policy',
+        string='Re-Invoice Expenses',
         default='no',
         help="Expenses and vendor bills can be re-invoiced to a customer."
              "With this option, a validated expense can be re-invoice to a customer at its cost or sales price.")
+    visible_expense_policy = fields.Boolean("Re-Invoice Policy visible", compute='_compute_visible_expense_policy')
     sales_count = fields.Float(compute='_compute_sales_count', string='Sold')
-    hide_expense_policy = fields.Boolean(compute='_compute_hide_expense_policy')
     invoice_policy = fields.Selection([
         ('order', 'Ordered quantities'),
         ('delivery', 'Delivered quantities')], string='Invoicing Policy',
@@ -37,10 +37,11 @@ class ProductTemplate(models.Model):
         default='order')
 
     @api.multi
-    def _compute_hide_expense_policy(self):
-        hide_expense_policy = self.user_has_groups('!analytic.group_analytic_accounting,!project.group_project_user,!hr_expense.group_hr_expense_user')
-        for template in self:
-            template.hide_expense_policy = hide_expense_policy
+    @api.depends('name')
+    def _compute_visible_expense_policy(self):
+        visibility = self.user_has_groups('analytic.group_analytic_accounting')
+        for product_template in self:
+            product_template.visible_expense_policy = visibility
 
     @api.multi
     @api.depends('product_variant_ids.sales_count')
@@ -53,9 +54,11 @@ class ProductTemplate(models.Model):
         action = self.env.ref('sale.report_all_channels_sales_action').read()[0]
         action['domain'] = [('product_tmpl_id', 'in', self.ids)]
         action['context'] = {
-            'search_default_last_year': 1,
-            'pivot_measures': ['product_qty'],
-            'search_default_team_id': 1
+            'pivot_measures': ['product_uom_qty'],
+            'active_id': self._context.get('active_id'),
+            'active_model': 'sale.report',
+            'search_default_Sales': 1,
+            'time_ranges': {'field': 'date', 'range': 'last_365_days'}
         }
         return action
 
@@ -145,10 +148,12 @@ class ProductTemplate(models.Model):
     @api.onchange('type')
     def _onchange_type(self):
         """ Force values to stay consistent with integrity constraints """
+        res = super(ProductTemplate, self)._onchange_type()
         if self.type == 'consu':
             if not self.invoice_policy:
                 self.invoice_policy = 'order'
             self.service_type = 'manual'
+        return res
 
     @api.model
     def get_import_templates(self):
@@ -166,7 +171,7 @@ class ProductTemplate(models.Model):
         return res
 
     @api.multi
-    def _get_combination_info(self, combination=False, product_id=False, add_qty=1, pricelist=False, parent_combination=False):
+    def _get_combination_info(self, combination=False, product_id=False, add_qty=1, pricelist=False, parent_combination=False, only_template=False):
         """ Return info about a given combination.
 
         Note: this method does not take into account whether the combination is
@@ -191,6 +196,9 @@ class ProductTemplate(models.Model):
             given, it will try to find the first possible combination, taking
             into account parent_combination (if set) for the exclusion rules.
 
+        :param only_template: boolean, if set to True, get the info for the
+            template only: ignore combination and don't try to find variant
+
         :return: dict with product/combination info:
 
             - product_id: the variant id matching the combination (if it exists)
@@ -212,17 +220,22 @@ class ProductTemplate(models.Model):
                 discount applied (price < list_price), else False
         """
         self.ensure_one()
+        # get the name before the change of context to benefit from prefetch
+        display_name = self.name
 
+        display_image = True
         quantity = self.env.context.get('quantity', add_qty)
         context = dict(self.env.context, quantity=quantity, pricelist=pricelist.id if pricelist else False)
         product_template = self.with_context(context)
 
         combination = combination or product_template.env['product.template.attribute.value']
 
-        if not product_id and not combination:
+        if not product_id and not combination and not only_template:
             combination = product_template._get_first_possible_combination(parent_combination)
 
-        if product_id and not combination:
+        if only_template:
+            product = product_template.env['product.product']
+        elif product_id and not combination:
             product = product_template.env['product.product'].browse(product_id)
         else:
             product = product_template._get_variant_for_combination(combination)
@@ -245,12 +258,11 @@ class ProductTemplate(models.Model):
                 )
             list_price = product.price_compute('list_price')[product.id]
             price = product.price if pricelist else list_price
+            display_image = bool(product.image)
         else:
             product_template = product_template.with_context(current_attributes_price_extra=[v.price_extra or 0.0 for v in combination])
             list_price = product_template.price_compute('list_price')[product_template.id]
             price = product_template.price if pricelist else list_price
-
-        display_name = product_template.name
 
         filtered_combination = combination._without_no_variant_attributes()
         if filtered_combination:
@@ -269,6 +281,7 @@ class ProductTemplate(models.Model):
             'product_id': product.id,
             'product_template_id': product_template.id,
             'display_name': display_name,
+            'display_image': display_image,
             'price': price,
             'list_price': list_price,
             'has_discounted_price': has_discounted_price,
@@ -278,8 +291,7 @@ class ProductTemplate(models.Model):
     def _is_add_to_cart_possible(self, parent_combination=None):
         """
         It's possible to add to cart (potentially after configuration) if
-        there is at least one possible combination, or if there is no
-        `product.template.attribute.line` at all.
+        there is at least one possible combination.
 
         :param parent_combination: the combination from which `self` is an
             optional or accessory product.
@@ -290,9 +302,9 @@ class ProductTemplate(models.Model):
         """
         self.ensure_one()
         if not self.active:
+            # for performance: avoid calling `_get_possible_combinations`
             return False
-        combination = self._get_first_possible_combination(parent_combination)
-        return True if combination else self._is_combination_possible(combination, parent_combination)
+        return next(self._get_possible_combinations(parent_combination), False) is not False
 
     @api.multi
     def _get_current_company_fallback(self, **kwargs):

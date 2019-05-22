@@ -9,11 +9,12 @@ var BarcodeEvents = require('barcodes.BarcodeEvents').BarcodeEvents;
 // Field in which the user can both type normally and scan barcodes
 
 var FieldFloatScannable = basicFields.FieldFloat.extend({
+    description: "",
     events: _.extend({}, basicFields.FieldFloat.prototype.events, {
         // The barcode_events component intercepts keypresses and releases them when it
         // appears they are not part of a barcode. But since released keypresses don't
         // trigger native behaviour (like characters input), we must simulate it.
-        'keypress': '_onKeypress',
+        keypress: '_onKeypress',
     }),
 
     //--------------------------------------------------------------------------
@@ -24,9 +25,9 @@ var FieldFloatScannable = basicFields.FieldFloat.extend({
      * @override
      * @private
      */
-    _renderEdit: function() {
+    _renderEdit: function () {
         var self = this;
-        $.when(this._super()).then(function () {
+        return Promise.resolve(this._super()).then(function () {
             self.$input.data('enableBarcode', true);
         });
     },

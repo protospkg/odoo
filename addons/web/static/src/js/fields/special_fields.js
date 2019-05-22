@@ -16,6 +16,7 @@ var _t = core._t;
  * the time difference between UTC time and local time, in minutes.
  */
 var FieldTimezoneMismatch = FieldSelection.extend({
+    description: "",
     /**
      * @override
      */
@@ -122,7 +123,9 @@ var FieldTimezoneMismatch = FieldSelection.extend({
 });
 
 var FieldReportLayout = relational_fields.FieldMany2One.extend({
-    supportedFieldTypes: ['many2one', 'selection'],
+    // this widget is not generic, so we disable its studio use
+    // supportedFieldTypes: ['many2one', 'selection'],
+    description: "",
     events: _.extend({}, relational_fields.FieldMany2One.prototype.events, {
         'click img': '_onImgClicked',
     }),
@@ -163,7 +166,7 @@ var FieldReportLayout = relational_fields.FieldMany2One.extend({
             $container.append($img);
             if (val.pdf) {
                 var $previewLink = $('<a>')
-                    .text('Preview')
+                    .text('Example')
                     .attr('href', val.pdf)
                     .attr('target', '_blank');
                 $container.append($previewLink);

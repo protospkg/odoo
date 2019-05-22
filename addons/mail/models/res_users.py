@@ -38,6 +38,7 @@ class Users(models.Model):
     moderation_channel_ids = fields.Many2many(
         'mail.channel', 'mail_channel_moderator_rel',
         string='Moderated channels')
+    out_of_office_message = fields.Char(string='Out of Office Message')
 
     @api.depends('moderation_channel_ids.moderation', 'moderation_channel_ids.moderator_ids')
     @api.multi
@@ -74,10 +75,10 @@ GROUP BY channel_moderator.res_users_id""", [tuple(self.ids)])
         init_res = super(Users, self).__init__(pool, cr)
         # duplicate list to avoid modifying the original reference
         type(self).SELF_WRITEABLE_FIELDS = list(self.SELF_WRITEABLE_FIELDS)
-        type(self).SELF_WRITEABLE_FIELDS.extend(['notification_type'])
+        type(self).SELF_WRITEABLE_FIELDS.extend(['notification_type', 'out_of_office_message'])
         # duplicate list to avoid modifying the original reference
         type(self).SELF_READABLE_FIELDS = list(self.SELF_READABLE_FIELDS)
-        type(self).SELF_READABLE_FIELDS.extend(['notification_type'])
+        type(self).SELF_READABLE_FIELDS.extend(['notification_type', 'out_of_office_message'])
         return init_res
 
     @api.model
@@ -129,17 +130,23 @@ GROUP BY channel_moderator.res_users_id""", [tuple(self.ids)])
         user_activities = {}
         for activity in activity_data:
             if not user_activities.get(activity['model']):
+                module = self.env[activity['model']]._original_module
+                icon = module and modules.module.get_module_icon(module)
                 user_activities[activity['model']] = {
                     'name': model_names[activity['id']],
                     'model': activity['model'],
                     'type': 'activity',
-                    'icon': modules.module.get_module_icon(self.env[activity['model']]._original_module),
+                    'icon': icon,
                     'total_count': 0, 'today_count': 0, 'overdue_count': 0, 'planned_count': 0,
                 }
             user_activities[activity['model']]['%s_count' % activity['states']] += activity['count']
             if activity['states'] in ('today', 'overdue'):
                 user_activities[activity['model']]['total_count'] += activity['count']
 
+            user_activities[activity['model']]['actions'] = [{
+                'icon': 'fa-clock-o',
+                'name': 'Summary',
+            }]
         return list(user_activities.values())
 
 

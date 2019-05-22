@@ -1073,7 +1073,7 @@ msgstr ""
 #. module: hr_recruitment
 #: model:ir.model.fields,field_description:hr_recruitment.field_hr_applicant__message_is_follower
 msgid "Is Follower"
-msgstr "je Sledující"
+msgstr ""
 
 #. module: hr_recruitment
 #: code:addons/hr_recruitment/models/hr_job.py:94
@@ -1517,7 +1517,7 @@ msgstr "Telefon"
 #. module: hr_recruitment
 #: selection:hr.applicant,activity_state:0
 msgid "Planned"
-msgstr "Plánováno"
+msgstr ""
 
 #. module: hr_recruitment
 #: model:ir.model.fields,help:hr_recruitment.field_hr_job__alias_contact

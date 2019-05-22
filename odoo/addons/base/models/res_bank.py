@@ -6,7 +6,6 @@ import collections
 
 from odoo import api, fields, models, _
 from odoo.osv import expression
-from odoo.tools import pycompat
 
 import werkzeug.urls
 
@@ -26,7 +25,7 @@ class Bank(models.Model):
     street2 = fields.Char()
     zip = fields.Char()
     city = fields.Char()
-    state = fields.Many2one('res.country.state', 'Fed. State', domain="[('country_id', '=', country)]")
+    state = fields.Many2one('res.country.state', 'Fed. State', domain="[('country_id', '=?', country)]")
     country = fields.Many2one('res.country')
     email = fields.Char()
     phone = fields.Char()
@@ -34,7 +33,6 @@ class Bank(models.Model):
     bic = fields.Char('Bank Identifier Code', index=True, help="Sometimes called BIC or Swift.")
 
     @api.multi
-    @api.depends('name', 'bic')
     def name_get(self):
         result = []
         for bank in self:
@@ -52,13 +50,23 @@ class Bank(models.Model):
                 domain = ['&'] + domain
         bank_ids = self._search(domain + args, limit=limit, access_rights_uid=name_get_uid)
         return self.browse(bank_ids).name_get()
+        
+    @api.onchange('country')
+    def _onchange_country_id(self):
+        if self.country and self.country != self.state.country_id:
+            self.state = False
+            
+    @api.onchange('state')
+    def _onchange_state(self):
+        if self.state.country_id:
+            self.country = self.state.country_id
 
 
 class ResPartnerBank(models.Model):
     _name = 'res.partner.bank'
     _rec_name = 'acc_number'
     _description = 'Bank Accounts'
-    _order = 'sequence'
+    _order = 'sequence, id'
 
     @api.model
     def get_supported_account_types(self):
@@ -76,9 +84,9 @@ class ResPartnerBank(models.Model):
     bank_id = fields.Many2one('res.bank', string='Bank')
     bank_name = fields.Char(related='bank_id.name', readonly=False)
     bank_bic = fields.Char(related='bank_id.bic', readonly=False)
-    sequence = fields.Integer()
+    sequence = fields.Integer(default=10)
     currency_id = fields.Many2one('res.currency', string='Currency')
-    company_id = fields.Many2one('res.company', 'Company', default=lambda self: self.env.user.company_id, ondelete='cascade')
+    company_id = fields.Many2one('res.company', 'Company', default=lambda self: self.env.company_id, ondelete='cascade')
     qr_code_valid = fields.Boolean(string="Has all required arguments", compute="_validate_qr_code_arguments")
 
     _sql_constraints = [
@@ -108,7 +116,7 @@ class ResPartnerBank(models.Model):
             if args[pos][0] == 'acc_number':
                 op = args[pos][1]
                 value = args[pos][2]
-                if not isinstance(value, pycompat.string_types) and isinstance(value, collections.Iterable):
+                if not isinstance(value, str) and isinstance(value, collections.Iterable):
                     value = [sanitize_account_number(i) for i in value]
                 else:
                     value = sanitize_account_number(value)

@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import common
-from odoo.tools import mute_logger, float_repr, pycompat
+from odoo.tools import mute_logger, float_repr
 from odoo.tools.date_utils import add, subtract, start_of, end_of
 
 
@@ -18,8 +18,8 @@ class TestFields(common.TransactionCase):
         discussion = self.env.ref('test_new_api.discussion_0')
 
         # read field as a record attribute or as a record item
-        self.assertIsInstance(discussion.name, pycompat.string_types)
-        self.assertIsInstance(discussion['name'], pycompat.string_types)
+        self.assertIsInstance(discussion.name, str)
+        self.assertIsInstance(discussion['name'], str)
         self.assertEqual(discussion['name'], discussion.name)
 
         # read it with method read()
@@ -51,6 +51,10 @@ class TestFields(common.TransactionCase):
         assert len(records) > 1
         with self.assertRaises(ValueError):
             records.body = 'Faulty'
+
+        # field assigmenent does not cache the wrong value when write overridden
+        record.priority = 4
+        self.assertEqual(record.priority, 5)
 
     def test_10_computed(self):
         """ check definition of computed fields """
@@ -368,6 +372,26 @@ class TestFields(common.TransactionCase):
         self.assertEqual(record.bar2, 'B')
         self.assertEqual(record.bar3, 'C')
         self.assertCountEqual(log, ['compute'])
+
+    def test_13_inverse_access(self):
+        """ test access rights on inverse fields """
+        foo = self.env['test_new_api.category'].create({'name': 'Foo'})
+        user = self.env['res.users'].create({'name': 'Foo', 'login': 'foo'})
+        self.assertFalse(user.has_group('base.group_system'))
+        # add group on non-stored inverse field
+        self.patch(type(foo).display_name, 'groups', 'base.group_system')
+        with self.assertRaises(AccessError):
+            foo.sudo(user).display_name = 'Forbidden'
+
+    def test_13_inverse_access(self):
+        """ test access rights on inverse fields """
+        foo = self.env['test_new_api.category'].create({'name': 'Foo'})
+        user = self.env['res.users'].create({'name': 'Foo', 'login': 'foo'})
+        self.assertFalse(user.has_group('base.group_system'))
+        # add group on non-stored inverse field
+        self.patch(type(foo).display_name, 'groups', 'base.group_system')
+        with self.assertRaises(AccessError):
+            foo.sudo(user).display_name = 'Forbidden'
 
     def test_14_search(self):
         """ test search on computed fields """
@@ -747,8 +771,8 @@ class TestFields(common.TransactionCase):
         """ test company-dependent fields. """
         # consider three companies
         company0 = self.env.ref('base.main_company')
-        company1 = self.env['res.company'].create({'name': 'A', 'parent_id': company0.id})
-        company2 = self.env['res.company'].create({'name': 'B', 'parent_id': company1.id})
+        company1 = self.env['res.company'].create({'name': 'A'})
+        company2 = self.env['res.company'].create({'name': 'B'})
 
         # create one user per company
         user0 = self.env['res.users'].create({'name': 'Foo', 'login': 'foo',
@@ -770,6 +794,10 @@ class TestFields(common.TransactionCase):
         field_tag_id = self.env['ir.model.fields']._get('test_new_api.company', 'tag_id')
         self.env['ir.property'].create({'name': 'foo', 'fields_id': field_tag_id.id,
                                         'value': tag0, 'type': 'many2one'})
+
+        # assumption: users don't have access to 'ir.property'
+        accesses = self.env['ir.model.access'].search([('model_id.model', '=', 'ir.property')])
+        accesses.write(dict.fromkeys(['perm_read', 'perm_write', 'perm_create', 'perm_unlink'], False))
 
         # create/modify a record, and check the value for each user
         record = self.env['test_new_api.company'].create({
@@ -824,6 +852,13 @@ class TestFields(common.TransactionCase):
         self.assertEqual(record.sudo(user1).foo, False)
         self.assertEqual(record.sudo(user2).foo, 'default')
 
+        # set field with 'force_company' in context
+        record.sudo(user0).with_context(force_company=company1.id).foo = 'beta'
+        record.invalidate_cache()
+        self.assertEqual(record.sudo(user0).foo, 'main')
+        self.assertEqual(record.sudo(user1).foo, 'beta')
+        self.assertEqual(record.sudo(user2).foo, 'default')
+
         # create company record and attribute
         company_record = self.env['test_new_api.company'].create({'foo': 'ABC'})
         attribute_record = self.env['test_new_api.company.attr'].create({
@@ -842,6 +877,25 @@ class TestFields(common.TransactionCase):
         self.assertEqual(attribute_record.company.foo, 'DEF')
         self.assertEqual(attribute_record.bar, 'DEFDEF')
         self.assertFalse(self.env.has_todo())
+
+        # add group on company-dependent field
+        self.assertFalse(user0.has_group('base.group_system'))
+        self.patch(type(record).foo, 'groups', 'base.group_system')
+        with self.assertRaises(AccessError):
+            record.sudo(user0).foo = 'forbidden'
+
+        user0.write({'groups_id': [(4, self.env.ref('base.group_system').id)]})
+        record.sudo(user0).foo = 'yes we can'
+
+        # add ir.rule to prevent access on record
+        self.assertTrue(user0.has_group('base.group_user'))
+        rule = self.env['ir.rule'].create({
+            'model_id': self.env['ir.model']._get_id(record._name),
+            'groups': [self.env.ref('base.group_user').id],
+            'domain_force': str([('id', '!=', record.id)]),
+        })
+        with self.assertRaises(AccessError):
+            record.sudo(user0).foo = 'forbidden'
 
     def test_30_read(self):
         """ test computed fields as returned by read(). """
@@ -867,32 +921,45 @@ class TestFields(common.TransactionCase):
         cat1, cat2 = cats
         self.assertEqual(cat2.name, 'ACCESS')
         # both categories should be ready for prefetching
-        self.assertItemsEqual(cat2._prefetch[Category._name], cats.ids)
+        self.assertItemsEqual(cat2._prefetch_ids, cats.ids)
         # but due to our (lame) overwrite of `read`, it should not forbid us to read records we have access to
         self.assertFalse(cat2.discussions)
         self.assertEqual(cat2.parent, cat1)
         with self.assertRaises(AccessError):
             cat1.name
 
-    def test_40_new(self):
-        """ test new records. """
+    def test_40_new_defaults(self):
+        """ Test new records with defaults. """
+        user = self.env.user
         discussion = self.env.ref('test_new_api.discussion_0')
 
-        # create a new message
-        message = self.env['test_new_api.message'].new()
-        self.assertFalse(message.id)
+        # create a new message; fields have their default value if not given
+        new_msg = self.env['test_new_api.message'].new({'body': "XXX"})
+        self.assertFalse(new_msg.id)
+        self.assertEqual(new_msg.body, "XXX")
+        self.assertEqual(new_msg.author, user)
 
         # assign some fields; should have no side effect
-        message.discussion = discussion
-        message.body = BODY = "May the Force be with you."
-        self.assertEqual(message.discussion, discussion)
-        self.assertEqual(message.body, BODY)
-        self.assertFalse(message.author)
-        self.assertNotIn(message, discussion.messages)
+        new_msg.discussion = discussion
+        new_msg.body = "YYY"
+        self.assertEqual(new_msg.discussion, discussion)
+        self.assertEqual(new_msg.body, "YYY")
+        self.assertNotIn(new_msg, discussion.messages)
 
         # check computed values of fields
-        self.assertEqual(message.name, "[%s] %s" % (discussion.name, ''))
-        self.assertEqual(message.size, len(BODY))
+        self.assertEqual(new_msg.name, "[%s] %s" % (discussion.name, user.name))
+        self.assertEqual(new_msg.size, 3)
+
+        # extra tests for x2many fields with default
+        cat1 = self.env['test_new_api.category'].create({'name': "Cat1"})
+        cat2 = self.env['test_new_api.category'].create({'name': "Cat2"})
+        discussion = discussion.with_context(default_categories=[(4, cat1.id)])
+        # no value gives the default value
+        new_disc = discussion.new({'name': "Foo"})
+        self.assertEqual(new_disc.categories, cat1)
+        # value is combined with default value
+        new_disc = discussion.new({'name': "Foo", 'categories': [(4, cat2.id)]})
+        self.assertEqual(new_disc.categories, cat1 + cat2)
 
     @mute_logger('odoo.addons.base.models.ir_model')
     def test_41_new_related(self):
@@ -1104,6 +1171,18 @@ class TestFields(common.TransactionCase):
 
 
 class TestX2many(common.TransactionCase):
+    def test_definition_many2many(self):
+        """ Test the definition of inherited many2many fields. """
+        field = self.env['test_new_api.multi.line']._fields['tags']
+        self.assertEqual(field.relation, 'test_new_api_multi_line_test_new_api_multi_tag_rel')
+        self.assertEqual(field.column1, 'test_new_api_multi_line_id')
+        self.assertEqual(field.column2, 'test_new_api_multi_tag_id')
+
+        field = self.env['test_new_api.multi.line2']._fields['tags']
+        self.assertEqual(field.relation, 'test_new_api_multi_line2_test_new_api_multi_tag_rel')
+        self.assertEqual(field.column1, 'test_new_api_multi_line2_id')
+        self.assertEqual(field.column2, 'test_new_api_multi_tag_id')
+
     def test_search_many2many(self):
         """ Tests search on many2many fields. """
         tags = self.env['test_new_api.multi.tag']
@@ -1163,7 +1242,7 @@ class TestX2many(common.TransactionCase):
         recY = recs.create({'lines': [(0, 0, {})]})
         recZ = recs.create({})
         recs = recX + recY + recZ
-        line1, line2, line3 = recs.mapped('lines')
+        line1, line2, line3 = recs.lines
         line4 = recs.create({'lines': [(0, 0, {})]}).lines
         line0 = line4.create({})
 
@@ -1435,3 +1514,25 @@ class TestParentStore(common.TransactionCase):
         """ Move multiple nodes to create a cycle. """
         with self.assertRaises(UserError):
             self.cats(1, 3).write({'parent': self.cats(9).id})
+
+
+class TestRequiredMany2one(common.TransactionCase):
+
+    def test_explicit_ondelete(self):
+        field = self.env['test_new_api.req_m2o']._fields['foo']
+        self.assertEqual(field.ondelete, 'cascade')
+
+    def test_implicit_ondelete(self):
+        field = self.env['test_new_api.req_m2o']._fields['bar']
+        self.assertEqual(field.ondelete, 'restrict')
+
+    def test_explicit_set_null(self):
+        Model = self.env['test_new_api.req_m2o']
+        field = Model._fields['foo']
+
+        # invalidate registry to redo the setup afterwards
+        self.registry.registry_invalidated = True
+        self.patch(field, 'ondelete', 'set null')
+
+        with self.assertRaises(ValueError):
+            field._setup_regular_base(Model)

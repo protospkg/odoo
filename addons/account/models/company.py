@@ -12,17 +12,31 @@ from odoo.tools.float_utils import float_round, float_is_zero
 from odoo.tools import date_utils
 
 
+MONTH_SELECTION = [
+    ('1', 'January'),
+    ('2', 'February'),
+    ('3', 'March'),
+    ('4', 'April'),
+    ('5', 'May'),
+    ('6', 'June'),
+    ('7', 'July'),
+    ('8', 'August'),
+    ('9', 'September'),
+    ('10', 'October'),
+    ('11', 'November'),
+    ('12', 'December'),
+]
+
+
 class ResCompany(models.Model):
     _inherit = "res.company"
 
-    def _get_invoice_reference_types(self):
-        return [('invoice_number', _('Based on Invoice Number')), ('partner', _('Based on Customer'))]
-
     #TODO check all the options/fields are in the views (settings + company form view)
     fiscalyear_last_day = fields.Integer(default=31, required=True)
-    fiscalyear_last_month = fields.Selection([(1, 'January'), (2, 'February'), (3, 'March'), (4, 'April'), (5, 'May'), (6, 'June'), (7, 'July'), (8, 'August'), (9, 'September'), (10, 'October'), (11, 'November'), (12, 'December')], default=12, required=True)
+    fiscalyear_last_month = fields.Selection(MONTH_SELECTION, default='12', required=True)
     period_lock_date = fields.Date(string="Lock Date for Non-Advisers", help="Only users with the 'Adviser' role can edit accounts prior to and inclusive of this date. Use it for period locking inside an open fiscal year, for example.")
     fiscalyear_lock_date = fields.Date(string="Lock Date", help="No users, including Advisers, can edit accounts prior to and inclusive of this date. Use it for fiscal year locking for example.")
+    tax_lock_date = fields.Date("Tax Lock Date", help="No users can edit journal entries related to a tax prior and inclusive of this date.")
     transfer_account_id = fields.Many2one('account.account',
         domain=lambda self: [('reconcile', '=', True), ('user_type_id.id', '=', self.env.ref('account.data_account_type_current_assets').id), ('deprecated', '=', False)], string="Inter-Banks Transfer Account", help="Intermediary account used when moving money from a liquidity account to another")
     expects_chart_of_accounts = fields.Boolean(string='Expects a Chart of Accounts', default=True)
@@ -63,8 +77,6 @@ Best Regards,'''))
 
     incoterm_id = fields.Many2one('account.incoterms', string='Default incoterm',
         help='International Commercial Terms are a series of predefined commercial terms used in international transactions.')
-    invoice_reference_type = fields.Selection(string='Default Communication Type', selection='_get_invoice_reference_types',
-                                              default='invoice_number', help='You can set here the default communication that will appear on customer invoices, once validated, to help the customer to refer to that particular invoice when making the payment.')
 
     qr_code = fields.Boolean(string='Display SEPA QR code')
 
@@ -88,12 +100,13 @@ Best Regards,'''))
     # account dashboard onboarding
     account_invoice_onboarding_state = fields.Selection([('not_done', "Not done"), ('just_done', "Just done"), ('done', "Done"), ('closed', "Closed")], string="State of the account invoice onboarding panel", default='not_done')
     account_dashboard_onboarding_state = fields.Selection([('not_done', "Not done"), ('just_done', "Just done"), ('done', "Done"), ('closed', "Closed")], string="State of the account dashboard onboarding panel", default='not_done')
+    invoice_terms = fields.Text(string='Default Terms and Conditions', translate=True)
 
     @api.constrains('account_opening_date', 'fiscalyear_last_day', 'fiscalyear_last_month')
     def _check_fiscalyear_last_day(self):
         # if the user explicitly chooses the 29th of February we allow it:
         # there is no "fiscalyear_last_year" so we do not know his intentions.
-        if self.fiscalyear_last_day == 29 and self.fiscalyear_last_month == 2:
+        if self.fiscalyear_last_day == 29 and self.fiscalyear_last_month == '2':
             return
 
         if self.account_opening_date:
@@ -101,7 +114,7 @@ Best Regards,'''))
         else:
             year = datetime.now().year
 
-        max_day = calendar.monthrange(year, self.fiscalyear_last_month)[1]
+        max_day = calendar.monthrange(year, int(self.fiscalyear_last_month))[1]
         if self.fiscalyear_last_day > max_day:
             raise ValidationError(_("Invalid fiscal year last day"))
 
@@ -214,7 +227,7 @@ Best Regards,'''))
             }
 
         date_from, date_to = date_utils.get_fiscal_year(
-            current_date, day=self.fiscalyear_last_day, month=self.fiscalyear_last_month)
+            current_date, day=self.fiscalyear_last_day, month=int(self.fiscalyear_last_month))
 
         date_from_str = date_from.strftime(DEFAULT_SERVER_DATE_FORMAT)
         date_to_str = date_to.strftime(DEFAULT_SERVER_DATE_FORMAT)
@@ -300,7 +313,7 @@ Best Regards,'''))
     @api.model
     def setting_init_fiscal_year_action(self):
         """ Called by the 'Fiscal Year Opening' button of the setup bar."""
-        company = self.env.user.company_id
+        company = self.env.company_id
         company.create_op_move_if_non_existant()
         new_wizard = self.env['account.financial.year.op'].create({'company_id': company.id})
         view_id = self.env.ref('account.setup_financial_year_opening_form').id
@@ -318,7 +331,7 @@ Best Regards,'''))
     @api.model
     def setting_chart_of_accounts_action(self):
         """ Called by the 'Chart of Accounts' button of the setup bar."""
-        company = self.env.user.company_id
+        company = self.env.company_id
         company.set_onboarding_step_done('account_setup_coa_state')
 
         # If an opening move has already been posted, we open the tree view showing all the accounts
@@ -357,7 +370,7 @@ Best Regards,'''))
                 raise UserError(_("Please install a chart of accounts or create a miscellaneous journal before proceeding."))
 
             today = datetime.today().date()
-            opening_date = today.replace(month=self.fiscalyear_last_month, day=self.fiscalyear_last_day) + timedelta(days=1)
+            opening_date = today.replace(month=int(self.fiscalyear_last_month), day=self.fiscalyear_last_day) + timedelta(days=1)
             if opening_date > today:
                 opening_date = opening_date + relativedelta(years=-1)
 
@@ -381,8 +394,13 @@ Best Regards,'''))
                                                       ('user_type_id', '=', unaffected_earnings_type.id)])
         if account:
             return account[0]
+        # Do not assume '999999' doesn't exist since the user might have created such an account
+        # manually.
+        code = 999999
+        while self.env['account.account'].search([('code', '=', str(code)), ('company_id', '=', self.id)]):
+            code -= 1
         return self.env['account.account'].create({
-                'code': '999999',
+                'code': str(code),
                 'name': _('Undistributed Profits/Losses'),
                 'user_type_id': unaffected_earnings_type.id,
                 'company_id': self.id,
@@ -437,25 +455,25 @@ Best Regards,'''))
     @api.model
     def action_close_account_invoice_onboarding(self):
         """ Mark the invoice onboarding panel as closed. """
-        self.env.user.company_id.account_invoice_onboarding_state = 'closed'
+        self.env.company_id.account_invoice_onboarding_state = 'closed'
 
     @api.model
     def action_close_account_dashboard_onboarding(self):
         """ Mark the dashboard onboarding panel as closed. """
-        self.env.user.company_id.account_dashboard_onboarding_state = 'closed'
+        self.env.company_id.account_dashboard_onboarding_state = 'closed'
 
     @api.model
     def action_open_account_onboarding_invoice_layout(self):
         """ Onboarding step for the invoice layout. """
         action = self.env.ref('account.action_open_account_onboarding_invoice_layout').read()[0]
-        action['res_id'] = self.env.user.company_id.id
+        action['res_id'] = self.env.company_id.id
         return action
 
     @api.model
     def action_open_account_onboarding_sale_tax(self):
         """ Onboarding step for the invoice layout. """
         action = self.env.ref('account.action_open_account_onboarding_sale_tax').read()[0]
-        action['res_id'] = self.env.user.company_id.id
+        action['res_id'] = self.env.company_id.id
         return action
 
     @api.model
@@ -464,7 +482,7 @@ Best Regards,'''))
         # use current user as partner
         partner = self.env.user.partner_id
 
-        company_id = self.env.user.company_id.id
+        company_id = self.env.company_id.id
         # try to find an existing sample invoice
         sample_invoice = self.env['account.invoice'].search(
             [('company_id', '=', company_id),
@@ -472,7 +490,7 @@ Best Regards,'''))
 
         if len(sample_invoice) == 0:
             # If there are no existing accounts or no journal, fail
-            account = self.env.user.company_id.get_chart_of_accounts_or_fail()
+            account = self.env.company_id.get_chart_of_accounts_or_fail()
 
             journal = self.env['account.journal'].search([('company_id', '=', company_id)], limit=1)
             if len(journal) == 0:

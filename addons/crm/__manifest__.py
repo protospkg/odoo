@@ -4,7 +4,7 @@
 {
     'name': 'CRM',
     'version': '1.0',
-    'category': 'Sales',
+    'category': 'Sales/CRM',
     'sequence': 5,
     'summary': 'Track leads and close opportunities',
     'description': "",
@@ -54,6 +54,5 @@
     'css': ['static/src/css/crm.css'],
     'installable': True,
     'application': True,
-    'auto_install': False,
-    'uninstall_hook': 'uninstall_hook',
+    'auto_install': False
 }

@@ -4,7 +4,6 @@
 # 
 # Translators:
 # Martin Trigaux, 2018
-# Jeffery CHEN Fan <jeffery9@gmail.com>, 2018
 # liAnGjiA <liangjia@qq.com>, 2018
 # inspur qiuguodong <qiuguodong@inspur.com>, 2018
 # 广州救火 <7017511@qq.com>, 2018
@@ -98,7 +97,7 @@ msgstr "文档模型"
 #. module: rating
 #: model:ir.model,name:rating.model_mail_thread
 msgid "Email Thread"
-msgstr "EMail线程"
+msgstr "Email线程"
 
 #. module: rating
 #: model:ir.model.fields,help:rating.field_rating_rating__consumed

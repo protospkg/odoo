@@ -185,6 +185,7 @@ The service has *seven* important fields:
 * :samp:`label` - :class:`Label`: The name displayed on the shopping portal for the
   client.
 
+
 .. warning::
    Both the :class:`ServiceName` and :class:`Label` are unique. As good practice, the 
    :class:`ServiceName` should usually match the name of your Odoo Client App.

@@ -28,8 +28,6 @@ msgid ""
 "<span class=\"o_form_label\">Live Chat</span>\n"
 "                        <span class=\"fa fa-lg fa-globe\" title=\"Values set here are website-specific.\" groups=\"website.group_multi_website\"/>"
 msgstr ""
-"<span class=\"o_form_label\">Live chat</span>\n"
-"                        <span class=\"fa fa-lg fa-globe\" title=\"Values set here are website-specific.\" groups=\"website.group_multi_website\"/>"
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
@@ -49,17 +47,17 @@ msgstr "Konfigurer opsætning"
 #. module: website_livechat
 #: model:ir.model.fields,help:website_livechat.field_im_livechat_channel__website_description
 msgid "Description of the channel displayed on the website page"
-msgstr "Beskrivelse af kanalen, der vises på hjemmesiden"
+msgstr ""
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
 msgid "Happy face"
-msgstr "Glad ansigt"
+msgstr ""
 
 #. module: website_livechat
 #: model:website.menu,name:website_livechat.menu_livechat
 msgid "Live Support"
-msgstr "Live support"
+msgstr "Live Support"
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.res_config_settings_view_form
@@ -69,12 +67,12 @@ msgstr "Din hjemmesides live chat kanal"
 #. module: website_livechat
 #: model:ir.model,name:website_livechat.model_im_livechat_channel
 msgid "Livechat Channel"
-msgstr "<span>Livechat kanal</span>"
+msgstr "<span>Livechat Kanal</span>"
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_list_page
 msgid "Livechat Support Channels"
-msgstr "Livechat support kanaler"
+msgstr "Livechat Support Kanaler"
 
 #. module: website_livechat
 #. openerp-web
@@ -86,19 +84,19 @@ msgstr "Navn"
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
 msgid "Neutral face"
-msgstr "Neutralt ansigt"
+msgstr ""
 
 #. module: website_livechat
 #. openerp-web
 #: code:addons/website_livechat/static/src/js/website_livechat.editor.js:29
 #, python-format
 msgid "New Channel"
-msgstr "Ny kanal"
+msgstr "Ny Kanal"
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
 msgid "Sad face"
-msgstr "Ked af det ansigt"
+msgstr ""
 
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
@@ -123,7 +121,7 @@ msgstr "Der er ingen offentlig livechat kanal at vise."
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
 msgid "There is no rating for this channel for now."
-msgstr "Der er ingen vurdering af denne kanal for nu."
+msgstr ""
 
 #. module: website_livechat
 #: model:ir.model,name:website_livechat.model_website
@@ -133,12 +131,12 @@ msgstr "Hjemmeside"
 #. module: website_livechat
 #: model:ir.model.fields,field_description:website_livechat.field_res_config_settings__channel_id
 msgid "Website Live Channel"
-msgstr "Website Live Channel"
+msgstr ""
 
 #. module: website_livechat
 #: model:ir.model.fields,field_description:website_livechat.field_website__channel_id
 msgid "Website Live Chat Channel"
-msgstr "Website Live Chat Channel"
+msgstr ""
 
 #. module: website_livechat
 #: model:ir.model.fields,field_description:website_livechat.field_im_livechat_channel__website_description
@@ -148,4 +146,4 @@ msgstr "Hjemmeside beskrivelse"
 #. module: website_livechat
 #: model_terms:ir.ui.view,arch_db:website_livechat.channel_page
 msgid "last feedbacks"
-msgstr "Seneste feedback"
+msgstr ""

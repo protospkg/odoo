@@ -4,7 +4,7 @@
 from odoo import api, fields, models, _
 from odoo.addons import decimal_precision as dp
 from odoo.exceptions import UserError
-from odoo.tools import pycompat
+from odoo.osv import expression
 from odoo.tools.float_utils import float_round
 from datetime import datetime
 import operator as py_operator
@@ -75,6 +75,7 @@ class Product(models.Model):
     nbr_reordering_rules = fields.Integer('Reordering Rules', compute='_compute_nbr_reordering_rules')
     reordering_min_qty = fields.Float(compute='_compute_nbr_reordering_rules')
     reordering_max_qty = fields.Float(compute='_compute_nbr_reordering_rules')
+    putaway_rule_ids = fields.One2many('stock.putaway.rule', 'product_id', 'Putaway Rules')
 
     @api.depends('stock_move_ids.product_qty', 'stock_move_ids.state')
     def _compute_quantities(self):
@@ -150,6 +151,20 @@ class Product(models.Model):
 
         return res
 
+    def _get_description(self, picking_type_id):
+        """ return product receipt/delivery/picking description depending on
+        picking type passed as argument.
+        """
+        self.ensure_one()
+        picking_code = picking_type_id.code
+        description = self.description or self.name
+        if picking_code == 'incoming':
+            return self.description_pickingin or description
+        if picking_code == 'outgoing':
+            return self.description_pickingout or description
+        if picking_code == 'internal':
+            return self.description_picking or description
+
     def _get_domain_locations(self):
         '''
         Parses the context and returns a list of location_ids based on it.
@@ -159,39 +174,51 @@ class Product(models.Model):
         Warehouse = self.env['stock.warehouse']
 
         if self.env.context.get('company_owned', False):
-            company_id = self.env.user.company_id.id
+            company_id = self.env.company_id.id
             return (
                 [('location_id.company_id', '=', company_id), ('location_id.usage', 'in', ['internal', 'transit'])],
                 [('location_id.company_id', '=', False), ('location_dest_id.company_id', '=', company_id)],
                 [('location_id.company_id', '=', company_id), ('location_dest_id.company_id', '=', False),
             ])
-        location_ids = []
-        if self.env.context.get('location', False):
-            if isinstance(self.env.context['location'], pycompat.integer_types):
-                location_ids = [self.env.context['location']]
-            elif isinstance(self.env.context['location'], pycompat.string_types):
-                domain = [('complete_name', 'ilike', self.env.context['location'])]
-                if self.env.context.get('force_company', False):
-                    domain += [('company_id', '=', self.env.context['force_company'])]
-                location_ids = self.env['stock.location'].search(domain).ids
-            else:
-                location_ids = self.env.context['location']
-        else:
-            if self.env.context.get('warehouse', False):
-                if isinstance(self.env.context['warehouse'], pycompat.integer_types):
-                    wids = [self.env.context['warehouse']]
-                elif isinstance(self.env.context['warehouse'], pycompat.string_types):
-                    domain = [('name', 'ilike', self.env.context['warehouse'])]
-                    if self.env.context.get('force_company', False):
-                        domain += [('company_id', '=', self.env.context['force_company'])]
-                    wids = Warehouse.search(domain).ids
-                else:
-                    wids = self.env.context['warehouse']
-            else:
-                wids = Warehouse.search([]).ids
 
-            for w in Warehouse.browse(wids):
-                location_ids.append(w.view_location_id.id)
+        def _search_ids(model, values, force_company_id):
+            ids = set()
+            domain = []
+            for item in values:
+                if isinstance(item, int):
+                    ids.add(item)
+                else:
+                    domain = expression.OR([[('name', 'ilike', item)], domain])
+            if force_company_id:
+                domain = expression.AND([[('company_id', '=', force_company_id)], domain])
+            if domain:
+                ids |= set(self.env[model].search(domain).ids)
+            return ids
+
+        # We may receive a location or warehouse from the context, either by explicit
+        # python code or by the use of dummy fields in the search view.
+        # Normalize them into a list.
+        location = self.env.context.get('location')
+        if location and not isinstance(location, list):
+            location = [location]
+        warehouse = self.env.context.get('warehouse')
+        if warehouse and not isinstance(warehouse, list):
+            warehouse = [warehouse]
+        force_company = self.env.context.get('force_company', False)
+        # filter by location and/or warehouse
+        if warehouse:
+            w_ids = set(Warehouse.browse(_search_ids('stock.warehouse', warehouse, force_company)).mapped('view_location_id').ids)
+            if location:
+                l_ids = _search_ids('stock.location', location, force_company)
+                location_ids = w_ids & l_ids
+            else:
+                location_ids = w_ids
+        else:
+            if location:
+                location_ids = _search_ids('stock.location', location, force_company)
+            else:
+                location_ids = set(Warehouse.search([]).mapped('view_location_id').ids)
+
         return self._get_domain_locations_new(location_ids, company_id=self.env.context.get('force_company', False), compute_child=self.env.context.get('compute_child', True))
 
     def _get_domain_locations_new(self, location_ids, company_id=False, compute_child=True):
@@ -216,8 +243,13 @@ class Product(models.Model):
             loc_domain = loc_domain + [('location_id', operator, other_locations.ids)]
             dest_loc_domain = dest_loc_domain and ['|'] + dest_loc_domain or dest_loc_domain
             dest_loc_domain = dest_loc_domain + [('location_dest_id', operator, other_locations.ids)]
+        usage = self._context.get('quantity_available_locations_domain')
+        if usage:
+            stock_loc_domain = expression.AND([domain + loc_domain, [('location_id.usage', 'in', usage)]])
+        else:
+            stock_loc_domain = domain + loc_domain
         return (
-            domain + loc_domain,
+            stock_loc_domain,
             domain + dest_loc_domain + ['!'] + loc_domain if loc_domain else domain + dest_loc_domain,
             domain + loc_domain + ['!'] + dest_loc_domain if dest_loc_domain else domain + loc_domain
         )
@@ -259,7 +291,9 @@ class Product(models.Model):
 
         # TODO: Still optimization possible when searching virtual quantities
         ids = []
-        for product in self.with_context(prefetch_fields=False).search([]):
+        # Order the search on `id` to prevent the default order on the product name which slows
+        # down the search because of the join on the translation table to get the translated names.
+        for product in self.with_context(prefetch_fields=False).search([], order='id'):
             if OPERATORS[operator](product[field], value):
                 ids.append(product.id)
         return [('id', 'in', ids)]
@@ -316,7 +350,7 @@ class Product(models.Model):
     @api.model
     def fields_view_get(self, view_id=None, view_type='form', toolbar=False, submenu=False):
         res = super(Product, self).fields_view_get(view_id=view_id, view_type=view_type, toolbar=toolbar, submenu=submenu)
-        if self._context.get('location') and isinstance(self._context['location'], pycompat.integer_types):
+        if self._context.get('location') and isinstance(self._context['location'], int):
             location = self.env['stock.location'].browse(self._context['location'])
             fields = res.get('fields')
             if fields:
@@ -338,11 +372,6 @@ class Product(models.Model):
                         res['fields']['virtual_available']['string'] = _('Future P&L')
                     if fields.get('qty_available'):
                         res['fields']['qty_available']['string'] = _('P&L Qty')
-                elif location.usage == 'procurement':
-                    if fields.get('virtual_available'):
-                        res['fields']['virtual_available']['string'] = _('Future Qty')
-                    if fields.get('qty_available'):
-                        res['fields']['qty_available']['string'] = _('Unplanned Qty')
                 elif location.usage == 'production':
                     if fields.get('virtual_available'):
                         res['fields']['virtual_available']['string'] = _('Future Productions')
@@ -362,11 +391,28 @@ class Product(models.Model):
         action['domain'] = [('product_id', '=', self.id)]
         return action
 
+    def action_view_related_putaway_rules(self):
+        self.ensure_one()
+        domain = [
+            '|',
+                ('product_id', '=', self.id),
+                ('category_id', '=', self.product_tmpl_id.categ_id.id),
+        ]
+        return self.env['product.template']._get_action_view_related_putaway_rules(domain)
+
     def action_open_product_lot(self):
         self.ensure_one()
         action = self.env.ref('stock.action_production_lot_form').read()[0]
         action['domain'] = [('product_id', '=', self.id)]
         action['context'] = {'default_product_id': self.id}
+        return action
+
+    def action_open_quants(self):
+        self.ensure_one()
+        self.env['stock.quant']._quant_tasks()
+        action = self.env.ref('stock.product_open_quants').read()[0]
+        location_domain = self._get_domain_locations()[0]
+        action['domain'] = expression.AND([[('product_id', '=', self.id)], location_domain])
         return action
 
     @api.model
@@ -402,7 +448,7 @@ class ProductTemplate(models.Model):
     _inherit = 'product.template'
 
     responsible_id = fields.Many2one(
-        'res.users', string='Responsible', default=lambda self: self.env.uid, required=True,
+        'res.users', string='Responsible', default=lambda self: self.env.uid,
         help="This user will be responsible of the next activities related to logistic operations for this product.")
     type = fields.Selection(selection_add=[('product', 'Storable Product')])
     property_stock_production = fields.Many2one(
@@ -443,7 +489,7 @@ class ProductTemplate(models.Model):
     route_ids = fields.Many2many(
         'stock.location.route', 'stock_route_product', 'product_id', 'route_id', 'Routes',
         domain=[('product_selectable', '=', True)],
-        help="Depending on the modules installed, this will allow you to define the route of the product: whether it will be bought, manufactured, MTO, etc.")
+        help="Depending on the modules installed, this will allow you to define the route of the product: whether it will be bought, manufactured, replenished on order, etc.")
     nbr_reordering_rules = fields.Integer('Reordering Rules', compute='_compute_nbr_reordering_rules')
     # TDE FIXME: really used ?
     reordering_min_qty = fields.Float(compute='_compute_nbr_reordering_rules')
@@ -489,6 +535,17 @@ class ProductTemplate(models.Model):
             }
         return prod_available
 
+    @api.model
+    def _get_action_view_related_putaway_rules(self, domain):
+        return {
+            'name': _('Putaway Rules'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.putaway.rule',
+            'view_type': 'list',
+            'view_mode': 'list',
+            'domain': domain,
+        }
+
     def _search_qty_available(self, operator, value):
         domain = [('qty_available', operator, value)]
         product_variant_ids = self.env['product.product'].search(domain)
@@ -526,6 +583,13 @@ class ProductTemplate(models.Model):
     @api.onchange('tracking')
     def onchange_tracking(self):
         return self.mapped('product_variant_ids').onchange_tracking()
+
+    @api.onchange('type')
+    def _onchange_type(self):
+        res = super(ProductTemplate, self)._onchange_type()
+        if self.type == 'consu' and self.tracking != 'none':
+            self.tracking = 'none'
+        return res
 
     def write(self, vals):
         if 'uom_id' in vals:
@@ -570,11 +634,21 @@ class ProductTemplate(models.Model):
                 }
 
     def action_open_quants(self):
+        self.env['stock.quant']._quant_tasks()
         products = self.mapped('product_variant_ids')
         action = self.env.ref('stock.product_open_quants').read()[0]
-        action['domain'] = [('product_id', 'in', products.ids)]
-        action['context'] = {'search_default_internal_loc': 1}
+        location_domain = products._get_domain_locations()[0]
+        action['domain'] = expression.AND([[('product_id', 'in', products.ids)], location_domain])
         return action
+
+    def action_view_related_putaway_rules(self):
+        self.ensure_one()
+        domain = [
+            '|',
+                ('product_id.product_tmpl_id', '=', self.id),
+                ('category_id', '=', self.categ_id.id),
+        ]
+        return self._get_action_view_related_putaway_rules(domain)
 
     def action_view_orderpoints(self):
         products = self.mapped('product_variant_ids')
@@ -615,6 +689,7 @@ class ProductCategory(models.Model):
     total_route_ids = fields.Many2many(
         'stock.location.route', string='Total routes', compute='_compute_total_route_ids',
         readonly=True)
+    putaway_rule_ids = fields.One2many('stock.putaway.rule', 'category_id', 'Putaway Rules')
 
     @api.one
     def _compute_total_route_ids(self):
@@ -650,3 +725,15 @@ class UoM(models.Model):
                         "currently reserved."
                     ))
         return super(UoM, self).write(values)
+
+    def _adjust_uom_quantities(self, qty, quant_uom):
+        """ This method adjust the quantities of a procurement if its UoM isn't the same
+        as the one of the quant and the parameter 'propagate_uom' is not set.
+        """
+        procurement_uom = self
+        computed_qty = qty
+        get_param = self.env['ir.config_parameter'].sudo().get_param
+        if procurement_uom.id != quant_uom.id and get_param('stock.propagate_uom') != '1':
+            computed_qty = self._compute_quantity(qty, quant_uom, rounding_method='HALF-UP')
+            procurement_uom = quant_uom
+        return (computed_qty, procurement_uom)

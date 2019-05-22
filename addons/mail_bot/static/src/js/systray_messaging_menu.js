@@ -22,7 +22,7 @@ return MessagingMenu.include({
      */
     _computeCounter: function () {
         var counter = this._super.apply(this, arguments);
-        if (this.call('mailbot_service', 'hasRequest')) {
+        if (this.call('mailbot_service', 'isRequestingForNativeNotifications')) {
             counter++;
         }
         return counter;
@@ -33,7 +33,7 @@ return MessagingMenu.include({
      *
      * @override
      * @private
-     * @returns {$.Promise<Object[]>} resolved with list of previews that are
+     * @returns {Promise<Object[]>} resolved with list of previews that are
      *   compatible with the 'mail.Preview' template.
      */
     _getPreviews: function () {
@@ -60,9 +60,6 @@ return MessagingMenu.include({
         if (value !== 'granted') {
             this.call('bus_service', 'sendNotification', _t('Permission denied'),
                 _t('Odoo will not have the permission to send native notifications on this device.'));
-        } else {
-            this.call('bus_service', 'sendNotification', _t('Yay, push notifications are enabled!'),
-                _t('Odoo has now the permission to send you native notifications on this device.'));
         }
         this._updateCounter();
     },

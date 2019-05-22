@@ -3,35 +3,33 @@
 # * stock
 # 
 # Translators:
+# e2f <projects@e2f.com>, 2018
+# Martin Trigaux, 2018
+# Wolfgang Taferner, 2018
+# Thorsten Vocks <thorsten.vocks@openbig.org>, 2018
+# Rudolf Schnapka <rs@techno-flex.de>, 2018
+# darenkster <inactive+darenkster@transifex.com>, 2018
+# Andi, 2018
 # Torsten Wichmann <t.wichmann@intero-technologies.de>, 2018
 # Silvan Wyden <silvan.wyden@braintec-group.com>, 2018
+# Katharina Moritz <kmo@e2f.com>, 2018
+# Bülent Tiknas <btiknas@googlemail.com>, 2018
 # Jan Meyer, 2018
-# DE T1 <e2f8846@yahoo.com>, 2018
-# Niki Waibel, 2018
-# Philipp Hug <philipp@hug.cx>, 2018
-# Thorsten Vocks <thorsten.vocks@openbig.org>, 2018
+# Ralf Hilgenstock <rh@dialoge.info>, 2018
 # Ermin Trevisan <trevi@twanda.com>, 2018
-# Gab_Odoo <gab@odoo.com>, 2018
-# darenkster <inactive+darenkster@transifex.com>, 2018
+# Niki Waibel, 2018
 # Alexander Klockhaus <a.klockhaus@gmail.com>, 2018
 # brokemeister <work@maltejansen.de>, 2018
-# e2f <projects@e2f.com>, 2018
-# Ralf Hilgenstock <rh@dialoge.info>, 2018
-# Rudolf Schnapka <rs@techno-flex.de>, 2018
-# Andi, 2018
-# Katharina Moritz <kmo@e2f.com>, 2018
+# DE T1 <e2f8846@yahoo.com>, 2018
+# Philipp Hug <philipp@hug.cx>, 2018
 # DE T2 <e2f48d4s5vd1s2@outlook.com>, 2018
-# Wolfgang Taferner, 2018
-# Martin Trigaux, 2018
-# Bülent Tiknas <btiknas@googlemail.com>, 2018
 # Johannes Croe <jcr@odoo.com>, 2018
-# 
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-19 08:20+0000\n"
-"PO-Revision-Date: 2018-08-24 09:25+0000\n"
+"POT-Creation-Date: 2018-10-24 09:34+0000\n"
+"PO-Revision-Date: 2018-10-24 09:34+0000\n"
 "Last-Translator: Johannes Croe <jcr@odoo.com>, 2018\n"
 "Language-Team: German (https://www.transifex.com/odoo/teams/41243/de/)\n"
 "MIME-Version: 1.0\n"
@@ -1108,7 +1106,6 @@ msgstr "Inhalt"
 
 #. module: stock
 #: model:ir.model.fields,help:stock.field_product_replenish__product_uom_category_id
-#: model:ir.model.fields,help:stock.field_stock_inventory_line__product_uom_category_id
 msgid ""
 "Conversion between Units of Measure can only occur if they belong to the "
 "same category. The conversion will be made based on the ratios."
@@ -1413,8 +1410,8 @@ msgstr "Kunden"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_dhl
-msgid "DHL Connector"
-msgstr "DHL Konektor"
+msgid "DHL USA"
+msgstr "DHL USA"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_report_stock_forecast__date
@@ -1864,8 +1861,8 @@ msgstr "Entwurf Lieferung"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_easypost
-msgid "Easypost Connector"
-msgstr "Easypost Konnektor"
+msgid "Easypost"
+msgstr "Easypost"
 
 #. module: stock
 #: model_terms:ir.ui.view,arch_db:stock.view_picking_form
@@ -1935,8 +1932,8 @@ msgstr "FIFO, LIFO"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_fedex
-msgid "FedEx Connector"
-msgstr "FedEx Konektor"
+msgid "FedEx"
+msgstr "FedEx"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_stock_package_destination__filtered_location
@@ -2985,7 +2982,7 @@ msgstr "Ort"
 #: model_terms:ir.ui.view,arch_db:stock.view_move_search
 #: model_terms:ir.ui.view,arch_db:stock.warehouse_orderpoint_search
 msgid "Location"
-msgstr "Lagerort"
+msgstr "Veranstaltungsort"
 
 #. module: stock
 #: model:ir.actions.report,name:stock.action_report_location_barcode
@@ -6334,13 +6331,13 @@ msgstr "Vorgangstyp"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_ups
-msgid "UPS Connector"
-msgstr ""
+msgid "UPS"
+msgstr "UPS"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_usps
-msgid "USPS Connector"
-msgstr ""
+msgid "USPS"
+msgstr "USPS"
 
 #. module: stock
 #. openerp-web
@@ -6468,11 +6465,6 @@ msgstr "ME"
 #: model:ir.ui.menu,name:stock.menu_stock_uom_categ_form_action
 msgid "UoM Categories"
 msgstr "ME-Kategorien"
-
-#. module: stock
-#: model:ir.model.fields,field_description:stock.field_stock_inventory_line__product_uom_category_id
-msgid "Uom category"
-msgstr ""
 
 #. module: stock
 #: model_terms:ir.ui.view,arch_db:stock.view_change_product_quantity
@@ -7175,8 +7167,8 @@ msgstr "Abbruch"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_bpost
-msgid "bpost Connector"
-msgstr ""
+msgid "bpost"
+msgstr "bpost"
 
 #. module: stock
 #: model_terms:ir.ui.view,arch_db:stock.view_template_property_form

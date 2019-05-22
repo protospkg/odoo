@@ -3,12 +3,13 @@ odoo.define('partner.autocomplete.many2one', function (require) {
 
 var FieldMany2One = require('web.relational_fields').FieldMany2One;
 var core = require('web.core');
-var Autocomplete = require('partner.autocomplete.core');
+var AutocompleteMixin = require('partner.autocomplete.Mixin');
 var field_registry = require('web.field_registry');
 
 var _t = core._t;
 
-var PartnerField = FieldMany2One.extend({
+var PartnerField = FieldMany2One.extend(AutocompleteMixin, {
+    description: "",
     jsLibs: [
         '/partner_autocomplete/static/lib/jsvat.js'
     ],
@@ -21,7 +22,7 @@ var PartnerField = FieldMany2One.extend({
         this._addAutocompleteSource(this._searchSuggestions, {
             placeholder: _t('Searching Autocomplete...'),
             order: 20,
-            validation: Autocomplete.validateSearchTerm,
+            validation: this._validateSearchTerm,
         });
 
         this.additionalContext['show_vat'] = true;
@@ -35,14 +36,14 @@ var PartnerField = FieldMany2One.extend({
      * Action : create popup form with pre-filled values from Autocomplete
      *
      * @param {Object} company
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
     _createPartner: function (company) {
         var self = this;
         self.$('input').val('');
 
-        return Autocomplete.getCreateData(company).then(function (data){
+        return self._getCreateData(company).then(function (data){
             var context = {
                 'default_is_company': true
             };
@@ -78,7 +79,7 @@ var PartnerField = FieldMany2One.extend({
      */
     _modifyAutompleteRendering: function (){
         var api = this.$input.data('ui-autocomplete');
-        // FIXME: bugfix to prevent traceback in mobile apps due to override 
+        // FIXME: bugfix to prevent traceback in mobile apps due to override
         // of Many2one widget with native implementation.
         if (!api) {
             return;
@@ -114,40 +115,38 @@ var PartnerField = FieldMany2One.extend({
      *
      * @override
      * @param search_val {string}
-     * @returns {Deferred}
+     * @returns {Promise}
      * @private
      */
     _searchSuggestions: function (search_val) {
-        var def = $.Deferred();
+        var self = this;
+        return new Promise(function (resolve, reject) {
+            if (self._isOnline()) {
 
-        if (Autocomplete.isOnline()) {
-            var self = this;
+                self._autocomplete(search_val).then(function (suggestions) {
+                    var choices = [];
+                    if (suggestions && suggestions.length) {
+                        _.each(suggestions, function (suggestion) {
+                            var label = '<i class="fa fa-magic text-muted"/> ';
+                            label += _.str.sprintf('%s, <span class="text-muted">%s</span>', suggestion.label, suggestion.description);
 
-            Autocomplete.autocomplete(search_val).then(function (suggestions) {
-                var choices = [];
-                if (suggestions && suggestions.length) {
-                    _.each(suggestions, function (suggestion) {
-                        var label = '<i class="fa fa-magic text-muted"/> ';
-                        label += _.str.sprintf('%s, <span class="text-muted">%s</span>', suggestion.label, suggestion.description);
-
-                        choices.push({
-                            label: label,
-                            action: function () {
-                                self._createPartner(suggestion);
-                            },
-                            logo: suggestion.logo,
-                            classname: 'o_partner_autocomplete_dropdown_item',
+                            choices.push({
+                                label: label,
+                                action: function () {
+                                    self._createPartner(suggestion);
+                                },
+                                logo: suggestion.logo,
+                                classname: 'o_partner_autocomplete_dropdown_item',
+                            });
                         });
-                    });
-                }
+                    }
 
-                def.resolve(choices);
-            });
-        } else {
-            def.resolve([]);
-        }
-
-        return def;
+                    resolve(choices);
+                });
+            } else {
+               resolve([]);
+            }
+        });
     },
 });
 

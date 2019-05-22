@@ -21,9 +21,11 @@ var Dialog = require('web.Dialog');
 var dom = require('web.dom');
 var KeyboardNavigationMixin = require('web.KeyboardNavigationMixin');
 var Loading = require('web.Loading');
+var local_storage = require('web.local_storage');
 var RainbowMan = require('web.RainbowMan');
 var ServiceProviderMixin = require('web.ServiceProviderMixin');
 var session = require('web.session');
+var utils = require('web.utils');
 var Widget = require('web.Widget');
 
 var _t = core._t;
@@ -31,7 +33,9 @@ var qweb = core.qweb;
 
 var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMixin, {
     dependencies: ['notification'],
-    events: _.extend(KeyboardNavigationMixin.events, {}),
+    events: _.extend({}, KeyboardNavigationMixin.events, {
+        'click .o_search_options .dropdown-menu': '_onClickDropDownMenu',
+    }),
     custom_events: {
         clear_uncommitted_changes: function (e) {
             this.clear_uncommitted_changes().then(e.data.callback);
@@ -60,10 +64,11 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
         },
         load_filters: function (event) {
             return data_manager
-                .load_filters(event.data.dataset, event.data.action_id)
+                .load_filters(event.data)
                 .then(event.data.on_success);
         },
         create_filter: '_onCreateFilter',
+        delete_filter: '_onDeleteFilter',
         push_state: '_onPushState',
         show_effect: '_onShowEffect',
         // session
@@ -77,7 +82,7 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
                 if (event.data.on_success) {
                     event.data.on_success(result);
                 }
-            }).fail(function (result) {
+            }).guardedCatch(function (result) {
                 if (event.data.on_fail) {
                     event.data.on_fail(result);
                 }
@@ -111,21 +116,41 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
         this.on("change:title_part", this, this._title_changed);
         this._title_changed();
 
+        var state = $.bbq.getState();
+        // If not set on the url, retrieve cids from the local storage
+        // of from the default company on the user
+        var current_company_id = session.user_companies.current_company[0]
+        if (!state.cids) {
+            state.cids = utils.get_cookie('cids') !== null ? utils.get_cookie('cids') : String(current_company_id);
+        }
+        var stateCompanyIDS = _.map(state.cids.split(','), function (cid) { return parseInt(cid) });
+        var userCompanyIDS = _.map(session.user_companies.allowed_companies, function(company) {return company[0]});
+        // Check that the user has access to all the companies
+        if (!_.isEmpty(_.difference(stateCompanyIDS, userCompanyIDS))) {
+            state.cids = String(current_company_id);
+            stateCompanyIDS = [current_company_id]
+        }
+        // Update the user context with this configuration
+        session.user_context.allowed_company_ids = stateCompanyIDS;
+        $.bbq.pushState(state);
+        // Update favicon
+        $("link[type='image/x-icon']").attr('href', '/web/image/res.company/' + String(stateCompanyIDS[0]) + '/favicon/')
+
         return session.is_bound
             .then(function () {
                 self.$el.toggleClass('o_rtl', _t.database.parameters.direction === "rtl");
                 self.bind_events();
-                return $.when(
+                return Promise.all([
                     self.set_action_manager(),
                     self.set_loading()
-                );
+                ]);
             }).then(function () {
                 if (session.session_is_valid()) {
                     return self.show_application();
                 } else {
                     // database manager needs the webclient to keep going even
                     // though it has no valid session
-                    return $.when();
+                    return Promise.resolve();
                 }
             }).then(function () {
                 // Listen to 'scroll' event and propagate it on main bus
@@ -144,12 +169,13 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
         this.$el.on('mouseenter', '.oe_systray > div:not([data-toggle=tooltip])', function () {
             $(this).attr('data-toggle', 'tooltip').tooltip().trigger('mouseenter');
         });
+        // TODO: this handler seems useless since 11.0, should be removed
         this.$el.on('click', '.oe_dropdown_toggle', function (ev) {
             ev.preventDefault();
             var $toggle = $(this);
             var doc_width = $(document).width();
             var $menu = $toggle.siblings('.oe_dropdown_menu');
-            $menu = $menu.size() >= 1 ? $menu : $toggle.find('.oe_dropdown_menu');
+            $menu = $menu.length >= 1 ? $menu : $toggle.find('.oe_dropdown_menu');
             var state = $menu.is('.oe_opened');
             setTimeout(function () {
                 // Do not alter propagation
@@ -165,7 +191,7 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
                 }
             }, 0);
         });
-        window.addEventListener('blur', function (e) { self._hideAccessKeyOverlay(); });
+        window.addEventListener('blur', function (e) {self._hideAccessKeyOverlay(); });
         core.bus.on('click', this, function (ev) {
             $('.tooltip').remove();
             if (!$(ev.target).is('input[type=file]')) {
@@ -204,6 +230,10 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
                     });
                 }
             } else {
+                // ignore Chrome video internal error: https://crbug.com/809574
+                if (!error && message === 'ResizeObserver loop limit exceeded') {
+                    return;
+                }
                 var traceback = error ? error.stack : '';
                 crash_manager.show_error({
                     type: _t("Odoo Client Error"),
@@ -218,7 +248,7 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
         this.action_manager = new ActionManager(this, session.user_context);
         var fragment = document.createDocumentFragment();
         return this.action_manager.appendTo(fragment).then(function () {
-            dom.append(self.$('.o_main_content'), fragment, {
+            dom.append(self.$el, fragment, {
                 in_DOM: true,
                 callbacks: [{widget: self.action_manager}],
             });
@@ -328,6 +358,16 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
     //--------------------------------------------------------------------------
 
     /**
+     * When clicking inside a dropdown to modify search options
+     * prevents the bootstrap dropdown to close on itself
+     *
+     * @private
+     * @param {Event} ev
+     */
+    _onClickDropDownMenu: function (ev) {
+        ev.stopPropagation();
+    },
+    /**
      * Whenever the connection is lost, we need to notify the user.
      *
      * @private
@@ -365,6 +405,18 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
     _onCreateFilter: function (e) {
         data_manager
             .create_filter(e.data.filter)
+            .then(e.data.on_success);
+    },
+    /**
+     * @private
+     * @param {OdooEvent} e
+     * @param {Object} e.data.filter the filter description
+     * @param {function} e.data.on_success called when the RPC succeeds with its
+     *   returned value as argument
+     */
+    _onDeleteFilter: function (e) {
+        data_manager
+            .delete_filter(e.data.filterId)
             .then(e.data.on_success);
     },
     /**
@@ -419,7 +471,7 @@ var AbstractWebClient = Widget.extend(ServiceProviderMixin, KeyboardNavigationMi
      * @param {OdooEvent} e
      */
     _onPushState: function (e) {
-        this.do_push_state(e.data.state);
+        this.do_push_state(_.extend(e.data.state, {'cids': $.bbq.getState().cids}));
     },
     /**
      * This function must be implemented by actual webclient to scroll either to

@@ -30,6 +30,8 @@ class Applicant(models.Model):
 
     _inherit = 'hr.applicant'
 
+    residence_country = fields.Char(string="Residence Country")
+
     def website_form_input_filter(self, request, values):
         if 'partner_name' in values:
             values.setdefault('name', '%s\'s Application' % values['partner_name'])
@@ -45,7 +47,7 @@ class Job(models.Model):
         default_description = self.env["ir.model.data"].xmlid_to_object("website_hr_recruitment.default_website_description")
         return (default_description.render() if default_description else "")
 
-    website_description = fields.Html('Website description', translate=html_translate, sanitize_attributes=False, default=_get_default_website_description)
+    website_description = fields.Html('Website description', translate=html_translate, sanitize_attributes=False, default=_get_default_website_description, prefetch=False)
 
     @api.multi
     def _compute_website_url(self):

@@ -3,7 +3,6 @@
 # * stock
 # 
 # Translators:
-# Amer Hazaa <eng.amer.it@gmail.com>, 2018
 # Mohammed Albasha <m.albasha.ma@gmail.com>, 2018
 # AMAAL RU <Fabu1410@yahoo.com>, 2018
 # Zuhair Hammadi <zuhair12@gmail.com>, 2018
@@ -27,13 +26,14 @@
 # Martin Trigaux, 2018
 # Ali Alrehawi <alrehawi@hotmail.com>, 2018
 # Ghaith Gammar <g.gammar@saharaifs.net>, 2018
+# Amer Hazaa <eng.amer.it@gmail.com>, 2018
 # Osoul <baruni@osoul.ly>, 2018
 # 
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-19 08:20+0000\n"
+"POT-Creation-Date: 2018-10-24 09:34+0000\n"
 "PO-Revision-Date: 2018-08-24 09:25+0000\n"
 "Last-Translator: Osoul <baruni@osoul.ly>, 2018\n"
 "Language-Team: Arabic (https://www.transifex.com/odoo/teams/41243/ar/)\n"
@@ -1048,7 +1048,6 @@ msgstr "المحتوى"
 
 #. module: stock
 #: model:ir.model.fields,help:stock.field_product_replenish__product_uom_category_id
-#: model:ir.model.fields,help:stock.field_stock_inventory_line__product_uom_category_id
 msgid ""
 "Conversion between Units of Measure can only occur if they belong to the "
 "same category. The conversion will be made based on the ratios."
@@ -1345,7 +1344,7 @@ msgstr "العملاء"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_dhl
-msgid "DHL Connector"
+msgid "DHL USA"
 msgstr ""
 
 #. module: stock
@@ -1791,7 +1790,7 @@ msgstr "مسودات الحركات"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_easypost
-msgid "Easypost Connector"
+msgid "Easypost"
 msgstr ""
 
 #. module: stock
@@ -1858,8 +1857,8 @@ msgstr "FIFO, LIFO..."
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_fedex
-msgid "FedEx Connector"
-msgstr ""
+msgid "FedEx"
+msgstr "فيدكس"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_stock_package_destination__filtered_location
@@ -6085,13 +6084,13 @@ msgstr "نوع العمليه "
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_ups
-msgid "UPS Connector"
-msgstr ""
+msgid "UPS"
+msgstr "UPS"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_usps
-msgid "USPS Connector"
-msgstr ""
+msgid "USPS"
+msgstr "USPS"
 
 #. module: stock
 #. openerp-web
@@ -6219,11 +6218,6 @@ msgstr "وحدة القياس "
 #: model:ir.ui.menu,name:stock.menu_stock_uom_categ_form_action
 msgid "UoM Categories"
 msgstr "فئات وحدات القياس"
-
-#. module: stock
-#: model:ir.model.fields,field_description:stock.field_stock_inventory_line__product_uom_category_id
-msgid "Uom category"
-msgstr ""
 
 #. module: stock
 #: model_terms:ir.ui.view,arch_db:stock.view_change_product_quantity
@@ -6898,8 +6892,8 @@ msgstr "ال_غاء"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_bpost
-msgid "bpost Connector"
-msgstr ""
+msgid "bpost"
+msgstr "bpost"
 
 #. module: stock
 #: model_terms:ir.ui.view,arch_db:stock.view_template_property_form

@@ -6,7 +6,6 @@ from collections import Counter
 from odoo import api, fields, models, _
 from odoo.addons import decimal_precision as dp
 from odoo.exceptions import UserError, ValidationError
-from odoo.tools.pycompat import izip
 from odoo.tools.float_utils import float_round, float_compare, float_is_zero
 
 
@@ -17,11 +16,12 @@ class StockMoveLine(models.Model):
     _order = "result_package_id desc, id"
 
     picking_id = fields.Many2one(
-        'stock.picking', 'Stock Picking',
+        'stock.picking', 'Stock Picking', auto_join=True,
         help='The stock operation where the packing has been made')
     move_id = fields.Many2one(
         'stock.move', 'Stock Move',
         help="Change to a better name", index=True)
+    company_id = fields.Many2one('res.company', string='Company', related='move_id.company_id', store=True, readonly=True)
     product_id = fields.Many2one('product.product', 'Product', ondelete="cascade")
     product_uom_id = fields.Many2one('uom.uom', 'Unit of Measure', required=True)
     product_qty = fields.Float(
@@ -42,6 +42,7 @@ class StockMoveLine(models.Model):
     location_id = fields.Many2one('stock.location', 'From', required=True)
     location_dest_id = fields.Many2one('stock.location', 'To', required=True)
     lots_visible = fields.Boolean(compute='_compute_lots_visible')
+    picking_code = fields.Selection(related='picking_id.picking_type_id.code', readonly=True)
     picking_type_use_create_lots = fields.Boolean(related='picking_id.picking_type_id.use_create_lots', readonly=True)
     picking_type_use_existing_lots = fields.Boolean(related='picking_id.picking_type_id.use_existing_lots', readonly=True)
     state = fields.Selection(related='move_id.state', store=True, related_sudo=False, readonly=False)
@@ -51,7 +52,9 @@ class StockMoveLine(models.Model):
     produce_line_ids = fields.Many2many('stock.move.line', 'stock_move_line_consume_rel', 'produce_line_id', 'consume_line_id', help="Technical link to see which line was produced with this. ")
     reference = fields.Char(related='move_id.reference', store=True, related_sudo=False, readonly=False)
     tracking = fields.Selection(related='product_id.tracking', readonly=True)
+    origin = fields.Char(related='move_id.origin', string='Source')
     picking_type_entire_packs = fields.Boolean(related='picking_id.picking_type_id.show_entire_packs', readonly=True)
+    description_picking = fields.Text(string="Description picking")
 
     @api.one
     @api.depends('picking_id.picking_type_id', 'product_id.tracking')
@@ -90,6 +93,8 @@ class StockMoveLine(models.Model):
     @api.onchange('product_id', 'product_uom_id')
     def onchange_product_id(self):
         if self.product_id:
+            if self.picking_id:
+                self.description_picking = self.product_id._get_description(self.picking_id.picking_type_id)
             self.lots_visible = self.product_id.tracking != 'none'
             if not self.product_uom_id or self.product_uom_id.category_id != self.product_id.uom_id.category_id:
                 if self.move_id.product_uom:
@@ -117,11 +122,11 @@ class StockMoveLine(models.Model):
             if self.lot_name or self.lot_id:
                 move_lines_to_check = self._get_similar_move_lines() - self
                 if self.lot_name:
-                    counter = Counter(move_lines_to_check.mapped('lot_name'))
+                    counter = Counter([line.lot_name for line in move_lines_to_check])
                     if counter.get(self.lot_name) and counter[self.lot_name] > 1:
                         message = _('You cannot use the same serial number twice. Please correct the serial numbers encoded.')
                 elif self.lot_id:
-                    counter = Counter(move_lines_to_check.mapped('lot_id.id'))
+                    counter = Counter([line.lot_id.id for line in move_lines_to_check])
                     if counter.get(self.lot_id.id) and counter[self.lot_id.id] > 1:
                         message = _('You cannot use the same serial number twice. Please correct the serial numbers encoded.')
 
@@ -136,7 +141,7 @@ class StockMoveLine(models.Model):
         """
         res = {}
         if self.qty_done and self.product_id.tracking == 'serial':
-            if float_compare(self.qty_done, 1.0, precision_rounding=self.move_id.product_id.uom_id.rounding) != 0:
+            if float_compare(self.qty_done, 1.0, precision_rounding=self.product_id.uom_id.rounding) != 0:
                 message = _('You can only process 1.0 %s of products with unique serial number.') % self.product_id.uom_id.name
                 res['warning'] = {'title': _('Warning'), 'message': message}
         return res
@@ -177,7 +182,7 @@ class StockMoveLine(models.Model):
                         'picking_id': picking.id,
                     })
                     vals['move_id'] = new_move.id
-
+        
         mls = super(StockMoveLine, self).create(vals_list)
 
         for ml in mls:
@@ -446,6 +451,16 @@ class StockMoveLine(models.Model):
             'product_uom_qty': 0.00,
             'date': fields.Datetime.now(),
         })
+
+    def _reservation_is_updatable(self, quantity, reserved_quant):
+        self.ensure_one()
+        if (self.product_id.tracking != 'serial' and
+                self.location_id.id == reserved_quant.location_id.id and
+                self.lot_id.id == reserved_quant.lot_id.id and
+                self.package_id.id == reserved_quant.package_id.id and
+                self.owner_id.id == reserved_quant.owner_id.id):
+            return True
+        return False
 
     def _log_message(self, record, move, template, vals):
         data = vals.copy()

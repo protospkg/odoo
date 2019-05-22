@@ -4,7 +4,7 @@ import base64
 
 import werkzeug
 
-from odoo import _, exceptions, http
+from odoo import _, exceptions, http, tools
 from odoo.http import request
 from odoo.tools import consteq
 
@@ -39,7 +39,7 @@ class MassMailController(http.Controller):
                 # Unsubscribe directly + Let the user choose his subscriptions
                 mailing.update_opt_out(email, mailing.contact_list_ids.ids, True)
 
-                contacts = request.env['mail.mass_mailing.contact'].sudo().search([('email', '=', email)])
+                contacts = request.env['mail.mass_mailing.contact'].sudo().search([('email_normalized', '=', tools.email_normalize(email))])
                 subscription_list_ids = contacts.mapped('subscription_list_ids')
                 # In many user are found : if user is opt_out on the list with contact_id 1 but not with contact_id 2,
                 # assume that the user is not opt_out on both
@@ -62,6 +62,10 @@ class MassMailController(http.Controller):
                     'show_blacklist_button': request.env['ir.config_parameter'].sudo().get_param('mass_mailing.show_blacklist_buttons'),
                 })
             else:
+                opt_in_lists = request.env['mail.mass_mailing.list_contact_rel'].sudo().search([
+                    ('contact_id.email_normalized', '=', email),
+                    ('opt_out', '=', False)
+                ]).mapped('list_id')
                 blacklist_rec = request.env['mail.blacklist'].sudo()._add(email)
                 self._log_blacklist_action(
                     blacklist_rec, mailing_id,
@@ -70,6 +74,7 @@ class MassMailController(http.Controller):
                     'email': email,
                     'mailing_id': mailing_id,
                     'res_id': res_id,
+                    'list_ids': opt_in_lists,
                     'show_blacklist_button': request.env['ir.config_parameter'].sudo().get_param(
                         'mass_mailing.show_blacklist_buttons'),
                 })
@@ -102,7 +107,12 @@ class MassMailController(http.Controller):
         # which mass_mailing doesn't depend on
         country_code = request.session.get('geoip', False) and request.session.geoip.get('country_code', False)
 
-        request.env['link.tracker.click'].add_click(code, request.httprequest.remote_addr, country_code, stat_id=stat_id)
+        request.env['link.tracker.click'].sudo().add_click(
+            code,
+            ip=request.httprequest.remote_addr,
+            country_code=country_code,
+            mail_stat_id=stat_id
+        )
         return werkzeug.utils.redirect(request.env['link.tracker'].get_url_from_code(code), 301)
 
     @http.route('/mailing/blacklist/check', type='json', auth='none')
@@ -110,7 +120,7 @@ class MassMailController(http.Controller):
         if not self._valid_unsubscribe_token(mailing_id, res_id, email, token):
             return 'unauthorized'
         if email:
-            record = request.env['mail.blacklist'].sudo().with_context(active_test=False).search([('email', '=ilike', email)])
+            record = request.env['mail.blacklist'].sudo().with_context(active_test=False).search([('email', '=', tools.email_normalize(email))])
             if record['active']:
                 return True
             return False
@@ -147,8 +157,7 @@ class MassMailController(http.Controller):
             if not self._valid_unsubscribe_token(mailing_id, res_id, email, token):
                 return 'unauthorized'
             model = request.env[mailing.mailing_model_real]
-            [email_field] = model._primary_email
-            records = model.sudo().search([(email_field, '=ilike', email)])
+            records = model.sudo().search([('email_normalized', '=', tools.email_normalize(email))])
             for record in records:
                 record.sudo().message_post(body=_("Feedback from %s: %s" % (email, feedback)))
             return bool(records)

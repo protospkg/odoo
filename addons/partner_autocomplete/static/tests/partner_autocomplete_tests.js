@@ -4,11 +4,11 @@ odoo.define('partner_autocomplete.tests', function (require) {
     var FormView = require('web.FormView');
     var concurrency = require('web.concurrency');
     var testUtils = require("web.test_utils");
-    var AutocompleteCore = require('partner.autocomplete.core');
     var AutocompleteField = require('partner.autocomplete.fieldchar');
     var PartnerField = require('partner.autocomplete.many2one');
+    var NotificationService = require('web.NotificationService');
 
-    var createView = testUtils.createAsyncView;
+    var createView = testUtils.createView;
 
     function _compareResultFields(assert, form, fields, createData) {
         var type, formatted, $fieldInput;
@@ -17,7 +17,7 @@ odoo.define('partner_autocomplete.tests', function (require) {
             if (fields[key]) {
                 if (key === 'image') {
                     if (val) val = 'data:image/png;base64,' + val;
-                    assert.strictEqual(form.$(".o_field_image img").attr("data-src"), val, 'image value should have been updated to "' + val + '"');
+                    assert.hasAttrValue(form.$(".o_field_image img"), "data-src", val, 'image value should have been updated to "' + val + '"');
                 } else {
                     type = fields[key].type;
                     $fieldInput = form.$('input[name="' + key + '"]');
@@ -36,13 +36,62 @@ odoo.define('partner_autocomplete.tests', function (require) {
         });
     }
 
+    var suggestions = [{
+        name: "Odoo",
+        website: "odoo.com",
+        domain: "odoo.com",
+        logo: "odoo.com/logo.png",
+        vat: "BE0477472701"
+    }];
+
+    var enrichData = {};
+
+    var createData = {};
+
     QUnit.module('partner_autocomplete', {
         before: function () {
-            var suggestions = [
-                {name: "Odoo", website: "odoo.com", domain: "odoo.com", logo: "odoo.com/logo.png", vat: "BE0477472701"}
-            ];
+            var fieldsToPatch = [PartnerField, AutocompleteField];
+            _.each(fieldsToPatch, function (fieldToPatch) {
+                testUtils.mock.patch(fieldToPatch, {
+                    _getBase64Image: function (url) {
+                        return Promise.resolve(url === "odoo.com/logo.png" ? "odoobase64" : "");
+                    },
+                    _isOnline: function () {
+                        return true;
+                    },
+                    _getCreateData: function (company) {
+                        var def = this._super.apply(this, arguments);
+                        def.then(function (data) {
+                            createData = data.company;
+                        });
+                        return def;
+                    },
+                    _enrichCompany: function (company) {
+                        return Promise.resolve(enrichData);
+                    },
+                    _getOdooSuggestions: function (value, isVAT) {
+                        var results = _.filter(suggestions, function (suggestion) {
+                            value = value ? value.toLowerCase() : '';
+                            if (isVAT) return (suggestion.vat.toLowerCase().indexOf(value) >= 0);
+                            else return (suggestion.name.toLowerCase().indexOf(value) >= 0);
+                        });
+                        return Promise.resolve(results);
+                    },
+                    _getClearbitSuggestions: function (value) {
+                        return this._getOdooSuggestions(value);
+                    },
+                    do_notify: function (title, message, sticky, className) {
+                        return this.displayNotification(title, message, 'warning', true, 'o_partner_autocomplete_test_notify');
+                    },
+                });
+            });
 
-            var enrich_data = {
+            testUtils.mock.patch(AutocompleteField, {
+                debounceSuggestions: 0,
+            });
+        },
+        beforeEach: function () {
+            enrichData = {
                 country_id: 20,
                 state_id: false,
                 partner_gid: 1,
@@ -56,42 +105,6 @@ odoo.define('partner_autocomplete.tests', function (require) {
                 vat: "BE0477472701",
             };
 
-            testUtils.patch(AutocompleteCore, {
-                _getBase64Image: function (url) {
-                    return $.when(url === "odoo.com/logo.png" ? "odoobase64" : "");
-                },
-                isOnline: function () {
-                    return true;
-                },
-                getCreateData: function (company) {
-                    var self = this;
-                    var def = this._super.apply(this, arguments);
-                    def.then(function (data) {
-                        self._createData = data.company;
-                    });
-                    return def;
-                },
-                enrichCompany: function (company) {
-                    return $.when(enrich_data);
-                },
-                _getOdooSuggestions(value, isVAT) {
-                    var results = _.filter(suggestions, function (suggestion) {
-                        value = value ? value.toLowerCase() : '';
-                        if (isVAT) return (suggestion.vat.toLowerCase().indexOf(value) >= 0);
-                        else return (suggestion.name.toLowerCase().indexOf(value) >= 0);
-                    });
-                    return $.when(results);
-                },
-                _getClearbitSuggestions(value) {
-                    return this._getOdooSuggestions(value);
-                },
-            });
-
-            testUtils.patch(AutocompleteField, {
-                debounceSuggestions: 0,
-            });
-        },
-        beforeEach: function () {
             this.data = {
                 'res.partner': {
                     fields: {
@@ -127,8 +140,8 @@ odoo.define('partner_autocomplete.tests', function (require) {
             };
         },
         after: function () {
-            testUtils.unpatch(AutocompleteField);
-            testUtils.unpatch(AutocompleteCore);
+            testUtils.mock.unpatch(AutocompleteField);
+            testUtils.mock.unpatch(PartnerField);
         },
     });
 
@@ -149,14 +162,14 @@ odoo.define('partner_autocomplete.tests', function (require) {
         }).then(function (form){
             // Set company type to Individual
             var $company_type = form.$("select[name='company_type']");
-            $company_type.val('"individual"').trigger('change');
+            testUtils.fields.editSelect($company_type, '"individual"');
 
             // Check input exists
             var $input = form.$(".o_field_partner_autocomplete > input:visible");
             assert.strictEqual($input.length, 1, "there should be an <input/> for the Partner field");
 
             // Change input val and assert nothing happens
-            $input.val("odoo").trigger("input");
+            testUtils.fields.editInput($input, "odoo")
             var $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 0, "there should not be an opened dropdown");
 
@@ -167,11 +180,10 @@ odoo.define('partner_autocomplete.tests', function (require) {
     });
 
 
-    QUnit.test("Partner autocomplete : Company type = Company / Name search", function (assert) {
-        assert.expect(21);
-        var done = assert.async();
+    QUnit.test("Partner autocomplete : Company type = Company / Name search", async function (assert) {
+        assert.expect(18);
         var fields = this.data['res.partner'].fields;
-        createView({
+        var form = await createView({
             View: FormView,
             model: 'res.partner',
             data: this.data,
@@ -191,66 +203,61 @@ odoo.define('partner_autocomplete.tests', function (require) {
                 '<field name="comment"/>' +
                 '<field name="vat"/>' +
                 '</form>',
-            mockRPC: function (route, args) {
-                if (args.method) {
-                    assert.step(args.method);
-                }
+            mockRPC: function (route) {
                 if (route === "/web/static/src/img/placeholder.png"
                     || route === "odoo.com/logo.png"
                     || route === "data:image/png;base64,odoobase64") { // land here as it is not valid base64 content
-                    return $.when();
+                    return Promise.resolve();
                 }
                 return this._super.apply(this, arguments);
             },
-        }).then(function (form){
+        });
             // Set company type to Company
             var $company_type = form.$("select[name='company_type']");
-            $company_type.val('"company"').trigger('change');
+            await testUtils.fields.editSelect($company_type, '"company"');
 
             // Check input exists
             var $input = form.$(".o_field_partner_autocomplete > input:visible");
             assert.strictEqual($input.length, 1, "there should be an <input/> for the field");
 
             // Change input val and assert changes
-            $input.val("odoo").trigger("input");
-
+            await testUtils.fields.editInput($input, "odoo");
+            await testUtils.nextTick();
             var $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 1, "there should be an opened dropdown");
-            assert.strictEqual($dropdown.children().length, 1, "there should be only one proposition");
+            assert.strictEqual($dropdown.children().length, 1, "there should be only ne proposition");
 
-            $dropdown.find("a").first().click();
+            await testUtils.dom.click($dropdown.find("a").first());
             $input = form.$(".o_field_partner_autocomplete > input");
             assert.strictEqual($input.val(), "Odoo", "Input value should have been updated to \"Odoo\"");
             assert.strictEqual(form.$("input.o_field_widget").val(), "odoo.com", "website value should have been updated to \"odoo.com\"");
 
-            _compareResultFields(assert, form, fields, AutocompleteCore._createData);
+            _compareResultFields(assert, form, fields, createData);
 
             // Try suggestion with bullshit query
-            $input.val("ZZZZZZZZZZZZZZZZZZZZZZ").trigger("input");
+            await testUtils.fields.editInput($input, "ZZZZZZZZZZZZZZZZZZZZZZ");
             $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 0, "there should be no opened dropdown when no result");
 
             // Try autocomplete again
-            $input.val("odoo").trigger("input");
+            await testUtils.fields.editInput($input, "odoo");
+            await testUtils.nextTick();
             $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 1, "there should be an opened dropdown when typing odoo letters again");
 
             // Test if dropdown closes on focusout
             $input.trigger("focusout");
+            await testUtils.nextTick();
             $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 0, "unfocusing the input should close the dropdown");
 
             form.destroy();
-
-            done();
-        });
     });
 
-    QUnit.test("Partner autocomplete : Company type = Company / VAT search", function (assert) {
-        assert.expect(32);
-        var done = assert.async();
+    QUnit.test("Partner autocomplete : Company type = Company / VAT search", async function (assert) {
+        assert.expect(29);
         var fields = this.data['res.partner'].fields;
-        createView({
+        var form = await createView({
             View: FormView,
             model: 'res.partner',
             data: this.data,
@@ -270,21 +277,18 @@ odoo.define('partner_autocomplete.tests', function (require) {
                 '<field name="comment"/>' +
                 '<field name="vat"/>' +
                 '</form>',
-            mockRPC: function (route, args) {
-                if (args.method) {
-                    assert.step(args.method);
-                }
+            mockRPC: function (route) {
                 if (route === "/web/static/src/img/placeholder.png"
                     || route === "odoo.com/logo.png"
                     || route === "data:image/png;base64,odoobase64") { // land here as it is not valid base64 content
-                    return $.when();
+                    return Promise.resolve();
                 }
                 return this._super.apply(this, arguments);
             },
-        }).then(function (form){
+        });
             // Set company type to Company
             var $company_type = form.$("select[name='company_type']");
-            $company_type.val('"company"').trigger('change');
+            await testUtils.fields.editSelect($company_type, '"company"');
 
 
             // Check input exists
@@ -292,38 +296,38 @@ odoo.define('partner_autocomplete.tests', function (require) {
             assert.strictEqual($input.length, 1, "there should be an <input/> for the field");
 
             // Set incomplete VAT and assert changes
-            $input.val("BE047747270").trigger("input");
+            await testUtils.fields.editInput($input, "BE047747270")
 
             var $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 0, "there should be no opened dropdown no results with incomplete VAT number");
 
             // Set complete VAT and assert changes
             // First suggestion (only vat result)
-            $input.val("BE0477472701").trigger("input");
+            await testUtils.fields.editInput($input, "BE0477472701")
             $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 1, "there should be an opened dropdown");
             assert.strictEqual($dropdown.children().length, 1, "there should be one proposition for complete VAT number");
 
-            $dropdown.find("a").first().click();
+            await testUtils.dom.click($dropdown.find("a").first());
 
             $input = form.$(".o_field_partner_autocomplete > input");
             assert.strictEqual($input.val(), "Odoo", "Input value should have been updated to \"Odoo\"");
 
-            _compareResultFields(assert, form, fields, AutocompleteCore._createData);
-
+            _compareResultFields(assert, form, fields, createData);
+            await testUtils.nextTick();
             // Set complete VAT and assert changes
             // Second suggestion (only vat + clearbit result)
-            $input.val("BE0477472701").trigger("input");
+            await testUtils.fields.editInput($input, "BE0477472701")
             $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
             assert.strictEqual($dropdown.length, 1, "there should be an opened dropdown");
             assert.strictEqual($dropdown.children().length, 1, "there should be one proposition for complete VAT number");
 
-            $dropdown.find("a").first().click();
+            await testUtils.dom.click($dropdown.find("a").first());
 
             $input = form.$(".o_field_partner_autocomplete > input");
             assert.strictEqual($input.val(), "Odoo", "Input value should have been updated to \"Odoo\"");
 
-            _compareResultFields(assert, form, fields, AutocompleteCore._createData);
+            _compareResultFields(assert, form, fields, createData);
 
             // Test if dropdown closes on focusout
             $input.trigger("focusout");
@@ -332,8 +336,6 @@ odoo.define('partner_autocomplete.tests', function (require) {
 
             form.destroy();
 
-            done();
-        });
     });
 
     QUnit.test("Partner autocomplete : render Many2one", function (assert) {
@@ -356,12 +358,12 @@ odoo.define('partner_autocomplete.tests', function (require) {
             var $input = form.$('.o_field_many2one[name="parent_id"] input:visible');
             assert.strictEqual($input.length, 1, "there should be an <input/> for the Many2one");
 
-            $input.val('odoo').trigger('input');
+            testUtils.fields.editInput($input, 'odoo');
 
             concurrency.delay(0).then(function () {
                 var $dropdown = $input.autocomplete('widget');
                 assert.strictEqual($dropdown.length, 1, "there should be an opened dropdown");
-                assert.ok($dropdown.is('.o_partner_autocomplete_dropdown'), 
+                assert.ok($dropdown.is('.o_partner_autocomplete_dropdown'),
                     "there should be a partner_autocomplete");
 
                 PartnerField.prototype.AUTOCOMPLETE_DELAY = M2O_DELAY;
@@ -370,5 +372,48 @@ odoo.define('partner_autocomplete.tests', function (require) {
                 done();
             });
         });
+    });
+
+    QUnit.test("Partner autocomplete : Notify not enough credits", async function (assert) {
+        assert.expect(1);
+
+        enrichData = {
+            error: true,
+            error_message: 'Insufficient Credit',
+        };
+
+        var form = await createView({
+            View: FormView,
+            model: 'res.partner',
+            data: this.data,
+            arch:
+                '<form>' +
+                '<field name="company_type"/>' +
+                '<field name="name" widget="field_partner_autocomplete"/>' +
+                '</form>',
+            services: {
+                notification: NotificationService,
+            },
+            mockRPC: function (route, args) {
+                if (args.method === "get_credits_url"){
+                    return Promise.resolve('credits_url');
+                }
+                return this._super.apply(this, arguments);
+            },
+        });
+            // Set company type to Company
+            var $company_type = form.$("select[name='company_type']");
+            await testUtils.fields.editSelect($company_type, '"company"');
+
+            var $input = form.$(".o_field_partner_autocomplete > input:visible");
+            await testUtils.fields.editInput($input, "BE0477472701");
+
+            var $dropdown = form.$(".o_field_partner_autocomplete .dropdown-menu:visible");
+            await testUtils.dom.click($dropdown.find("a").first());
+
+            var $notify = $(".o_partner_autocomplete_test_notify");
+            assert.isVisible($notify, "there should be an 'Insufficient Credit' notification");
+
+            form.destroy();
     });
 });

@@ -58,13 +58,10 @@ class ReportBomStructure(models.AbstractModel):
         lines = self._get_operation_line(bom.routing_id, float_round(qty / bom.product_qty, precision_rounding=1, rounding_method='UP'), level)
         values = {
             'bom_id': bom_id,
-            'currency': self.env.user.company_id.currency_id,
+            'currency': self.env.company_id.currency_id,
             'operations': lines,
         }
         return self.env.ref('mrp.report_mrp_operation_line').render({'data': values})
-
-    def _get_bom_reference(self, bom):
-        return bom.display_name
 
     @api.model
     def _get_report_data(self, bom_id, searchQty=0, searchVariant=False):
@@ -114,9 +111,9 @@ class ReportBomStructure(models.AbstractModel):
             'bom': bom,
             'bom_qty': bom_quantity,
             'bom_prod_name': product.display_name,
-            'currency': self.env.user.company_id.currency_id,
+            'currency': self.env.company_id.currency_id,
             'product': product,
-            'code': bom and self._get_bom_reference(bom) or '',
+            'code': bom and bom.display_name or '',
             'price': product.uom_id._compute_price(product.standard_price, bom.product_uom_id) * bom_quantity,
             'total': sum([op['total'] for op in operations]),
             'level': level or 0,
@@ -140,17 +137,17 @@ class ReportBomStructure(models.AbstractModel):
             price = line.product_id.uom_id._compute_price(line.product_id.standard_price, line.product_uom_id) * line_quantity
             if line.child_bom_id:
                 factor = line.product_uom_id._compute_quantity(line_quantity, line.child_bom_id.product_uom_id) / line.child_bom_id.product_qty
-                sub_total = self._get_price(line.child_bom_id, factor)
+                sub_total = self._get_price(line.child_bom_id, factor, line.product_id)
             else:
                 sub_total = price
-            sub_total = self.env.user.company_id.currency_id.round(sub_total)
+            sub_total = self.env.company_id.currency_id.round(sub_total)
             components.append({
                 'prod_id': line.product_id.id,
                 'prod_name': line.product_id.display_name,
-                'code': line.child_bom_id and self._get_bom_reference(line.child_bom_id) or '',
+                'code': line.child_bom_id and line.child_bom_id.display_name or '',
                 'prod_qty': line_quantity,
                 'prod_uom': line.product_uom_id.name,
-                'prod_cost': self.env.user.company_id.currency_id.round(price),
+                'prod_cost': self.env.company_id.currency_id.round(price),
                 'parent_id': bom.id,
                 'line_id': line.id,
                 'level': level or 0,
@@ -176,11 +173,11 @@ class ReportBomStructure(models.AbstractModel):
                 'operation': operation,
                 'name': operation.name + ' - ' + operation.workcenter_id.name,
                 'duration_expected': duration_expected,
-                'total': self.env.user.company_id.currency_id.round(total),
+                'total': self.env.company_id.currency_id.round(total),
             })
         return operations
 
-    def _get_price(self, bom, factor):
+    def _get_price(self, bom, factor, product):
         price = 0
         if bom.routing_id:
             # routing are defined on a BoM and don't have a concept of quantity.
@@ -194,22 +191,24 @@ class ReportBomStructure(models.AbstractModel):
             price += sum([op['total'] for op in operations])
 
         for line in bom.bom_line_ids:
+            if line._skip_bom_line(product):
+                continue
             if line.child_bom_id:
-                qty = line.product_uom_id._compute_quantity(line.product_qty * factor, line.child_bom_id.product_uom_id)
-                sub_price = self._get_price(line.child_bom_id, qty)
+                qty = line.product_uom_id._compute_quantity(line.product_qty * factor, line.child_bom_id.product_uom_id) / line.child_bom_id.product_qty
+                sub_price = self._get_price(line.child_bom_id, qty, line.product_id)
                 price += sub_price
             else:
                 prod_qty = line.product_qty * factor
                 not_rounded_price = line.product_id.uom_id._compute_price(line.product_id.standard_price, line.product_uom_id) * prod_qty
-                price += self.env.user.company_id.currency_id.round(not_rounded_price)
+                price += self.env.company_id.currency_id.round(not_rounded_price)
         return price
 
     def _get_pdf_line(self, bom_id, product_id=False, qty=1, child_bom_ids=[], unfolded=False):
 
-        data = self._get_bom(bom_id=bom_id, product_id=product_id, line_qty=qty)
+        data = self._get_bom(bom_id=bom_id, product_id=product_id.id, line_qty=qty)
 
         def get_sub_lines(bom, product_id, line_qty, line_id, level):
-            data = self._get_bom(bom_id=bom.id, product_id=product_id, line_qty=line_qty, line_id=line_id, level=level)
+            data = self._get_bom(bom_id=bom.id, product_id=product_id.id, line_qty=line_qty, line_id=line_id, level=level)
             bom_lines = data['components']
             lines = []
             for bom_line in bom_lines:
@@ -225,7 +224,7 @@ class ReportBomStructure(models.AbstractModel):
                 })
                 if bom_line['child_bom'] and (unfolded or bom_line['child_bom'] in child_bom_ids):
                     line = self.env['mrp.bom.line'].browse(bom_line['line_id'])
-                    lines += (get_sub_lines(line.child_bom_id, line.product_id, line.product_qty * data['bom_qty'], line, level + 1))
+                    lines += (get_sub_lines(line.child_bom_id, line.product_id, bom_line['prod_qty'], line, level + 1))
             if data['operations']:
                 lines.append({
                     'name': _('Operations'),

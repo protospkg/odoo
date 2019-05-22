@@ -8,7 +8,6 @@ from difflib import get_close_matches
 from odoo import api, fields, models, tools, SUPERUSER_ID, _
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.modules import get_module_path, get_module_resource
-from odoo.tools import pycompat
 
 _logger = logging.getLogger(__name__)
 
@@ -410,10 +409,10 @@ class IrTranslation(models.Model):
         # always pass unicode so we can remove the string encoding/decoding.
         if not lang:
             return tools.ustr(source or '')
-        if isinstance(types, pycompat.string_types):
+        if isinstance(types, str):
             types = (types,)
         if res_id:
-            if isinstance(res_id, pycompat.integer_types):
+            if isinstance(res_id, int):
                 res_id = (res_id,)
             else:
                 res_id = tuple(res_id)
@@ -486,7 +485,7 @@ class IrTranslation(models.Model):
             translations_to_match = []
 
             for translation in translations:
-                if translation.src == translation.value:
+                if not translation.value:
                     discarded += translation
                     # consider it done to avoid being matched against another term
                     done.add((translation.src, translation.lang))
@@ -621,8 +620,8 @@ class IrTranslation(models.Model):
         external_ids = records.get_external_id()  # if no xml_id, empty string
         if callable(field.translate):
             # insert missing translations for each term in src
-            query = """ INSERT INTO ir_translation (lang, type, name, res_id, src, value, module)
-                        SELECT l.code, 'model_terms', %(name)s, %(res_id)s, %(src)s, %(src)s, %(module)s
+            query = """ INSERT INTO ir_translation (lang, type, name, res_id, src, module, state)
+                        SELECT l.code, 'model_terms', %(name)s, %(res_id)s, %(src)s, %(module)s, 'to_translate'
                         FROM res_lang l
                         WHERE l.active AND l.translatable AND NOT EXISTS (
                             SELECT 1 FROM ir_translation
@@ -642,8 +641,8 @@ class IrTranslation(models.Model):
                     })
         else:
             # insert missing translations for src
-            query = """ INSERT INTO ir_translation (lang, type, name, res_id, src, value, module)
-                        SELECT l.code, 'model', %(name)s, %(res_id)s, %(src)s, %(src)s, %(module)s
+            query = """ INSERT INTO ir_translation (lang, type, name, res_id, src, module, state)
+                        SELECT l.code, 'model', %(name)s, %(res_id)s, %(src)s, %(module)s, 'to_translate'
                         FROM res_lang l
                         WHERE l.active AND l.translatable AND l.code != 'en_US' AND NOT EXISTS (
                             SELECT 1 FROM ir_translation
@@ -669,6 +668,47 @@ class IrTranslation(models.Model):
                     'module': module
                 })
         self._modified_model(field.model_name)
+
+    @api.model
+    def _upsert_translations(self, vals_list):
+        """ Insert or update translations of type 'model' or 'model_terms'.
+
+            This method is used for creations of translations where the given
+            ``vals_list`` is trusted to be the right values and potential
+            conflicts should be updated to the new given value.
+        """
+        rows_by_type = defaultdict(list)
+        for vals in vals_list:
+            rows_by_type[vals['type']].append((
+                vals['name'], vals['lang'], vals['res_id'], vals['src'], vals['type'],
+                vals.get('module'), vals['value'], vals.get('state'), vals.get('comments'),
+            ))
+
+        if rows_by_type['model']:
+            query = """
+                INSERT INTO ir_translation (name, lang, res_id, src, type,
+                                            module, value, state, comments)
+                VALUES {}
+                ON CONFLICT (type, lang, name, res_id) WHERE type='model'
+                DO UPDATE SET (name, lang, res_id, src, type, value, module, state, comments) =
+                    (EXCLUDED.name, EXCLUDED.lang, EXCLUDED.res_id, EXCLUDED.src, EXCLUDED.type,
+                     EXCLUDED.value, EXCLUDED.module, EXCLUDED.state, EXCLUDED.comments)
+                WHERE EXCLUDED.value IS NOT NULL AND EXCLUDED.value != '';
+            """.format(", ".join(["%s"] * len(rows_by_type['model'])))
+            self.env.cr.execute(query, rows_by_type['model'])
+
+        if rows_by_type['model_terms']:
+            query = """
+                INSERT INTO ir_translation (name, lang, res_id, src, type,
+                                            module, value, state, comments)
+                VALUES {}
+                ON CONFLICT (type, name, lang, res_id, md5(src))
+                DO UPDATE SET (name, lang, res_id, src, type, value, module, state, comments) =
+                    (EXCLUDED.name, EXCLUDED.lang, EXCLUDED.res_id, EXCLUDED.src, EXCLUDED.type,
+                     EXCLUDED.value, EXCLUDED.module, EXCLUDED.state, EXCLUDED.comments)
+                WHERE EXCLUDED.value IS NOT NULL AND EXCLUDED.value != '';
+            """.format(", ".join(["%s"] * len(rows_by_type['model_terms'])))
+            self.env.cr.execute(query, rows_by_type['model_terms'])
 
     @api.model
     def translate_fields(self, model, id, field=None):

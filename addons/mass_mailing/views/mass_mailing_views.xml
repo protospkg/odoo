@@ -1,14 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-
-        <!-- Marketing / Mailing -->
-        <menuitem name="Email Marketing" id="mass_mailing_menu_root" sequence="60" web_icon="mass_mailing,static/description/icon.png"/>
-        <menuitem name="Mailing Lists" id="mass_mailing_mailing_list_menu"
-            parent="mass_mailing_menu_root" sequence="2" groups="mass_mailing.group_mass_mailing_user"/>
-        <!-- Marketing / Configuration -->
-        <menuitem name="Configuration" id="mass_mailing_configuration"
-            parent="mass_mailing_menu_root" sequence="100"/>
-
         <!--  MAILING CONTACT -->
         <record model="ir.ui.view" id="mail_mass_mailing_list_contact_rel_view_form">
             <!--TODO DBE : To remove - Deprecated -->
@@ -378,9 +369,10 @@
             <field name="name">mail.mass_mailing.list.kanban</field>
             <field name="model">mail.mass_mailing.list</field>
             <field name="arch" type="xml">
-                <kanban class="o_kanban_mobile" on_create="mass_mailing.open_create_mass_mailing_list">
+                <kanban js_class="mass_mailing_list_kanban" class="o_kanban_mobile" on_create="mass_mailing.open_create_mass_mailing_list">
                     <field name="name"/>
                     <field name="contact_nbr"/>
+                    <field name="active"/>
                     <templates>
                         <t t-name="kanban-box">
                             <div t-attf-class="oe_kanban_global_click">
@@ -400,6 +392,11 @@
                                             <div class="dropdown-menu" role="menu">
                                                 <a t-if="widget.editable" role="menuitem" type="edit" class="dropdown-item">Edit</a>
                                                 <a t-if="widget.deletable" role="menuitem" type="delete" class="dropdown-item">Delete</a>
+                                                <a role="menuitem" class="dropdown-item o_kanban_mailing_active" name="toggle_active" type="object">
+                                                    <t t-if="record.active.raw_value">Archive</t>
+                                                    <t t-if="!record.active.raw_value">Restore</t>
+                                                </a>
+                                                <ul class="oe_kanban_colorpicker" data-field="color"/>
                                             </div>
                                         </div>
                                     </div>
@@ -430,8 +427,8 @@
               <p class="o_view_nocontent_smiling_face">
                 Create a new mailing list
               </p><p>
-                No need of importing your mailing lists, you can easily
-                send emails to any contact saved in other Odoo apps.
+                You don't need to import your mailing lists, you can easily
+                send emails<br/> to any contact saved in other Odoo apps.
               </p>
             </field>
         </record>
@@ -594,13 +591,11 @@
                         </div>
 
                         <group>
-                            <label for="name" string="Subject"/>
-                            <div>
-                                <field name="name" nolabel="1"/>
-                            </div>
+                            <field name="name" required="1" string="Mailing Name"/>
+                            <field name="subject" string="Subject"/>
                             <label for="mailing_model_id" string="Recipients"/>
                             <div>
-                                <field name="mailing_model_id" widget="selection"/>
+                                <field name="mailing_model_id" widget="selection" required="1"/>
                                 <field name="mailing_model_name" invisible="1"/>
                                 <field name="mailing_model_real" invisible="1"/>
                                 <field name="mailing_domain" widget="domain"
@@ -616,11 +611,19 @@
                         </group>
                         <notebook>
                             <page string="Mail Body">
-                                <field name="body_html" class="o_mail_body" widget="html_frame" options="{'editor_url': '/mass_mailing/field/email_template'}"/>
+                                <field name="body_html" class="oe_read_only" widget="html" options="{
+                                    'cssReadonly': 'mass_mailing.iframe_css_assets_readonly',
+                                }"/>
+                                <field name="body_arch" class="o_mail_body oe_edit_only" widget="mass_mailing_html" options="{
+                                    'snippets': 'mass_mailing.email_designer_snippets',
+                                    'cssEdit': 'mass_mailing.iframe_css_assets_edit',
+                                    'inline-field': 'body_html'
+                                }"/>
                             </page>
                             <page string="Options">
                                 <group>
                                     <group string="Mailing">
+                                        <field name="user_id"/>
                                         <field name="email_from"/>
                                         <label for="reply_to"/>
                                         <div>
@@ -639,13 +642,15 @@
                                         <field name="create_date" readonly="1" attrs="{'invisible': [('create_date', '=', False)]}"/>
                                         <field name="sent_date" readonly="1" attrs="{'invisible': [('sent_date', '=', False)]}"/>
                                     </group>
-                                    <group string="Campaign" groups="base.group_no_one,mass_mailing.group_mass_mailing_campaign">
+                                    <group string="Marketing" groups="base.group_no_one,mass_mailing.group_mass_mailing_campaign">
                                         <field name="mass_mailing_campaign_id"
-                                            string="Campaign"
+                                            string="Mailing Campaign"
                                             groups="mass_mailing.group_mass_mailing_campaign"/>
-                                        <field name="campaign_id" invisible="1"
+                                        <field name="campaign_id"
+                                            string="UTM Campaign"
                                             groups="base.group_no_one"/>
                                         <field name="source_id"
+                                            readonly="1"
                                             string="Source"
                                             required="False"
                                             groups="base.group_no_one"/>
@@ -669,11 +674,14 @@
             <field name="name">mail.mass_mailing.kanban</field>
             <field name="model">mail.mass_mailing</field>
             <field name="arch" type="xml">
-                <kanban>
+                <kanban default_group_by="state">
+                    <field name='state' readonly="1"/>
+                    <field name='email_from' readonly="1"/>
                     <field name='color'/>
                     <field name='expected'/>
                     <field name='failed'/>
                     <field name='sent_date'/>
+                    <field name='active'/>
                     <templates>
                         <t t-name="kanban-box">
                             <div t-attf-class="oe_kanban_color_#{kanban_getcolor(record.color.raw_value)} oe_kanban_card oe_kanban_global_click oe_kanban_mass_mailing">
@@ -686,6 +694,10 @@
                                         <t t-if="widget.deletable">
                                             <a role="menuitem" type="delete" class="dropdown-item">Delete</a>
                                         </t>
+                                        <a role="menuitem" class="dropdown-item o_kanban_mailing_active" name="toggle_active" type="object">
+                                            <t t-if="record.active.raw_value">Archive</t>
+                                            <t t-if="!record.active.raw_value">Restore</t>
+                                        </a>
                                     </div>
                                 </div>
                                  <div class="oe_kanban_content">
@@ -722,7 +734,7 @@
                                             </div>
                                             <div class="row">
                                                 <div class="col-8">
-                                                    <a name="%(action_view_mass_mailing_links_statistics)d"
+                                                    <a name="%(link_tracker_action_mass_mailing)d"
                                                        type="action">Clicks</a>
                                                 </div>
                                                 <div class="col-4 text-right">
@@ -766,8 +778,8 @@
               <p class="o_view_nocontent_smiling_face">
                 Create a new mailing
               </p><p>
-                No need of importing your mailing lists, you can easily
-                send emails to any contact saved in other Odoo apps.
+                You don't need to import your mailing lists, you can easily
+                send emails<br/> to any contact saved in other Odoo apps.
               </p>
             </field>
         </record>
@@ -788,8 +800,8 @@
               <p class="o_view_nocontent_smiling_face">
                 Create a new mailing
               </p><p>
-                No need of importing your mailing lists, you can easily
-                send emails to any contact saved in other Odoo apps.
+                You don't need to import your mailing lists, you can easily
+                send emails<br/> to any contact saved in other Odoo apps.
               </p>
             </field>
         </record>
@@ -810,8 +822,8 @@
               <p class="o_view_nocontent_smiling_face">
                 Create a new mailing
               </p><p>
-                No need of importing your mailing lists, you can easily
-                send emails to any contact saved in other Odoo apps.
+                You don't need to import your mailing lists, you can easily
+                send emails<br/> to any contact saved in other Odoo apps.
               </p>
             </field>
         </record>
@@ -833,8 +845,8 @@
               <p class="o_view_nocontent_smiling_face">
                 Create a new mailing
               </p><p>
-                No need of importing your mailing lists, you can easily
-                send emails to any contact saved in other Odoo apps.
+                You don't need to import your mailing lists, you can easily
+                send emails<br/> to any contact saved in other Odoo apps.
               </p>
             </field>
         </record>
@@ -876,11 +888,8 @@
             </field>
         </record>
 
-        <menuitem id="menu_mass_mailing_configuration" name="Configuration" parent="mass_mailing_menu_root"
-            sequence="100" groups="mass_mailing.group_mass_mailing_user"/>
-
         <menuitem name="Campaign Stages" id="menu_view_mass_mailing_stages"
-            parent="menu_mass_mailing_configuration" sequence="1"
+            parent="mass_mailing_configuration" sequence="1"
             groups="mass_mailing.group_mass_mailing_campaign"
             action="action_view_mass_mailing_stages"/>
 
@@ -890,9 +899,11 @@
             <field name="model">mail.mass_mailing.tag</field>
             <field name="arch" type="xml">
                 <form string="Campaign Tags">
-                    <group>
-                        <field name="name"/>
-                    </group>
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                        </group>
+                    </sheet>
                 </form>
             </field>
         </record>
@@ -907,7 +918,7 @@
             </field>
         </record>
 
-        <menuitem id="mass_mailing_tag_menu" parent="menu_mass_mailing_configuration" action="mass_mailing_tag_action" sequence="2" groups="base.group_no_one"/>
+        <menuitem id="mass_mailing_tag_menu" parent="mass_mailing_configuration" action="mass_mailing_tag_action" sequence="2" groups="base.group_no_one"/>
 
 
         <!--  MAILING CAMPAIGNS !-->
@@ -978,7 +989,7 @@
                                 type="action" class="oe_stat_button">
                                 <field name="replied_ratio" widget="percentpie" string="Replied"/>
                             </button>
-                            <button name="%(dropdb snipp)d"
+                            <button name="%(link_tracker_action_mass_mailing_campaign)d"
                                 type="action" class="oe_stat_button">
                                 <field name="clicks_ratio" widget="percentpie" string="Clicks"/>
                             </button>
@@ -1020,7 +1031,7 @@
             <field name="name">mail.mass_mailing.campaign.kanban</field>
             <field name="model">mail.mass_mailing.campaign</field>
             <field name="arch" type="xml">
-                <kanban default_group_by='stage_id'>
+                <kanban js_class="mass_mailing_campaign_kanban" default_group_by='stage_id'>
                     <field name='total'/>
                     <field name='color'/>
                     <field name='user_id'/>

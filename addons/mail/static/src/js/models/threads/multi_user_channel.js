@@ -18,7 +18,8 @@ var MultiUserChannel = Channel.extend({
         var data = params.data;
 
         this._isMassMailing = data.mass_mailing || false;
-        this._type = data.public !== 'private' ? 'public' : 'private';
+        this._type = 'multi_user_channel';
+        this._public = data.public !== 'private';
     },
 
     //--------------------------------------------------------------------------
@@ -46,10 +47,16 @@ var MultiUserChannel = Channel.extend({
         return this._isMassMailing;
     },
     /**
+     * @returns {boolean}
+     */
+    isPublic: function () {
+        return this._public;
+    },
+    /**
      * Unsubscribes from channel
      *
      * @override
-     * @returns {$.Promise} resolve when unsubscribed
+     * @returns {Promise} resolve when unsubscribed
      */
     unsubscribe: function () {
         return this._rpc({

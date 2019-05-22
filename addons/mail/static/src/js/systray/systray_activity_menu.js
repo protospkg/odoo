@@ -20,7 +20,7 @@ var ActivityMenu = Widget.extend({
         'show.bs.dropdown': '_onActivityMenuShow',
     },
     willStart: function () {
-        return $.when(this.call('mail_service', 'isReady'));
+        return Promise.resolve(this.call('mail_service', 'isReady'));
     },
     start: function () {
         this._$activitiesPreview = this.$('.o_mail_systray_dropdown_items');
@@ -46,7 +46,7 @@ var ActivityMenu = Widget.extend({
             kwargs: {context: session.user_context},
         }).then(function (data) {
             self._activities = data;
-            self.activityCounter = _.reduce(data, function (total_count, p_data) { return total_count + p_data.total_count; }, 0);
+            self.activityCounter = _.reduce(data, function (total_count, p_data) { return total_count + p_data.total_count || 0; }, 0);
             self.$('.o_notification_counter').text(self.activityCounter);
             self.$el.toggleClass('o_no_notification', !self.activityCounter);
         });
@@ -100,14 +100,28 @@ var ActivityMenu = Widget.extend({
     //------------------------------------------------------------
 
     /**
-     * Redirect to specific action given its xml id
+     * Redirect to specific action given its xml id or to the activity
+     * view of the current model if no xml id is provided
+     *
      * @private
      * @param {MouseEvent} ev
      */
     _onActivityActionClick: function (ev) {
         ev.stopPropagation();
-        var actionXmlid = $(ev.currentTarget).data('action_xmlid');
-        this.do_action(actionXmlid);
+        var targetAction = $(ev.currentTarget);
+        var actionXmlid = targetAction.data('action_xmlid');
+        if (actionXmlid) {
+            this.do_action(actionXmlid);
+        } else {
+            this.do_action({
+                type: 'ir.actions.act_window',
+                name: targetAction.data('model_name'),
+                views: [[false, 'activity'], [false, 'kanban'], [false, 'list']],
+                view_mode: 'activity',
+                res_model: targetAction.data('res_model'),
+                context: { search_default_activities_my: true },
+            });
+        }
     },
 
     /**

@@ -14,14 +14,19 @@ class StockPickingType(models.Model):
         compute='_get_mo_count')
     count_mo_late = fields.Integer(string="Number of Manufacturing Orders Late",
         compute='_get_mo_count')
+    use_create_components_lots = fields.Boolean(
+        string="Create New Lots/Serial Numbers for Components",
+        help="Allow to create new lot/serial numbers for the components",
+        default=False,
+    )
 
     def _get_mo_count(self):
         mrp_picking_types = self.filtered(lambda picking: picking.code == 'mrp_operation')
         if not mrp_picking_types:
             return
         domains = {
-            'count_mo_waiting': [('availability', '=', 'waiting')],
-            'count_mo_todo': [('state', 'in', ('confirmed', 'planned', 'progress'))],
+            'count_mo_waiting': [('reservation_state', '=', 'waiting')],
+            'count_mo_todo': ['|', ('state', 'in', ('confirmed', 'draft', 'planned', 'progress'))],
             'count_mo_late': [('date_planned_start', '<', fields.Date.today()), ('state', '=', 'confirmed')],
         }
         for field in domains:

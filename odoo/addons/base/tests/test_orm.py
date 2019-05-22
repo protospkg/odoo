@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from odoo.exceptions import AccessError, MissingError
 from odoo.tests.common import TransactionCase
-from odoo.tools import mute_logger, pycompat
+from odoo.tools import mute_logger
 
 
 class TestORM(TransactionCase):
@@ -26,7 +26,7 @@ class TestORM(TransactionCase):
         user = self.env['res.users'].create({
             'name': 'test user',
             'login': 'test2',
-            'groups_id': [4, self.ref('base.group_user')],
+            'groups_id': [(6, 0, [self.ref('base.group_user')])],
         })
         ps = (p1 + p2).sudo(user)
         self.assertEqual([{'id': p2.id, 'name': 'Y'}], ps.read(['name']), "read() should skip deleted records")
@@ -47,7 +47,7 @@ class TestORM(TransactionCase):
         user = self.env['res.users'].create({
             'name': 'test user',
             'login': 'test2',
-            'groups_id': [4, self.ref('base.group_user')],
+            'groups_id': [(6, 0, [self.ref('base.group_user')])],
         })
 
         partner_model = self.env['ir.model'].search([('model','=','res.partner')])
@@ -208,7 +208,7 @@ class TestORM(TransactionCase):
         user = self.env['res.users'].create({
             'name': 'Justine Bridou',
             'login': 'saucisson',
-            'groups_id': [4, self.ref('base.group_partner_manager')],
+            'groups_id': [(6, 0, [self.ref('base.group_partner_manager')])],
         })
         p1 = self.env['res.partner'].sudo(user).create({'name': 'Zorro'})
         p1_prop = self.env['ir.property'].sudo(user).create({
@@ -243,7 +243,7 @@ class TestORM(TransactionCase):
 
         records = self.env['res.bank'].create(vals_list)
         self.assertEqual(len(records), len(vals_list))
-        for record, vals in pycompat.izip(records, vals_list):
+        for record, vals in zip(records, vals_list):
             self.assertEqual(record.name, vals['name'])
             self.assertEqual(record.email, vals.get('email', False))
 
@@ -279,7 +279,7 @@ class TestInherits(TransactionCase):
         """ `default_get` cannot return a dictionary or a new id """
         defaults = self.env['res.users'].default_get(['partner_id'])
         if 'partner_id' in defaults:
-            self.assertIsInstance(defaults['partner_id'], (bool, pycompat.integer_types))
+            self.assertIsInstance(defaults['partner_id'], (bool, int))
 
     def test_create(self):
         """ creating a user should automatically create a new partner """

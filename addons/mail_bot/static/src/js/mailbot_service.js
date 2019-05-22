@@ -32,25 +32,28 @@ var MailBotService =  AbstractService.extend({
      *   'mail.Preview' template.
      */
     getPreviews: function (filter) {
-        var previews = [];
-        if (this.hasRequest() && (filter === 'mailbox_inbox' || !filter)) {
-            previews.push({
-                title: _t("OdooBot has a request"),
-                imageSRC: "/mail/static/src/img/odoobot.png",
-                status: 'bot',
-                body:  _t("Enable desktop notifications to chat"),
-                id: 'request_notification',
-                unreadCounter: 1,
-            });
+        if (!this.isRequestingForNativeNotifications()) {
+            return [];
         }
+        if (filter && filter !== 'mailbox_inbox') {
+            return [];
+        }
+        var previews = [{
+            title: _t("OdooBot has a request"),
+            imageSRC: "/mail/static/src/img/odoobot.png",
+            status: 'bot',
+            body:  _t("Enable desktop notifications to chat"),
+            id: 'request_notification',
+            unreadCounter: 1,
+        }];
         return previews;
     },
     /**
-     * Tell whether OdooBot has a request or not.
+     * Tell whether OdooBot is requesting to enable push notifications.
      *
      * @returns {boolean}
      */
-    hasRequest: function () {
+    isRequestingForNativeNotifications: function () {
         return this._hasRequest;
     },
     /**

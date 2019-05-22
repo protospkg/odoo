@@ -12,15 +12,15 @@
 # 高木正勝 <masakatsu.takagi@pro-spire.co.jp>, 2018
 # Norimichi Sugimoto <norimichi.sugimoto@tls-ltd.co.jp>, 2018
 # 森岡広道 <hiromichi.morioka@pro-spire.co.jp>, 2018
-# Yoshi Tashiro <tashiro@roomsfor.hk>, 2019
+# Yoshi Tashiro <tashiro@roomsfor.hk>, 2018
 # 
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-13 17:53+0000\n"
+"POT-Creation-Date: 2018-10-08 06:49+0000\n"
 "PO-Revision-Date: 2018-08-24 09:33+0000\n"
-"Last-Translator: Yoshi Tashiro <tashiro@roomsfor.hk>, 2019\n"
+"Last-Translator: Yoshi Tashiro <tashiro@roomsfor.hk>, 2018\n"
 "Language-Team: Japanese (https://www.transifex.com/odoo/teams/41243/ja/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -173,7 +173,7 @@ msgstr "'%s' は正しいフォーマット（integer）ではありません"
 #: code:addons/web/static/src/js/fields/field_utils.js:548
 #, python-format
 msgid "'%s' is not a correct monetary field"
-msgstr "'%s' は正しい金額項目ではありません"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -194,7 +194,7 @@ msgstr "(エンタープライズ版)"
 #: code:addons/web/static/src/xml/base.xml:298
 #, python-format
 msgid "(change)"
-msgstr "(変更)"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -202,7 +202,7 @@ msgstr "(変更)"
 #: code:addons/web/static/src/xml/base.xml:537
 #, python-format
 msgid "(count)"
-msgstr "(件数)"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -232,7 +232,7 @@ msgstr "1 レコード"
 msgid ""
 "A popup window has been blocked. You may need to change your browser "
 "settings to allow popup windows for this page."
-msgstr "ポップアップウィンドウがブロックされています。このページのポップアップウィンドウを許可するには、ブラウザ設定を変更してください。"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -241,21 +241,21 @@ msgstr "ポップアップウィンドウがブロックされています。こ
 msgid ""
 "A popup window with your report was blocked. You may need to change your "
 "browser settings to allow popup windows for this page."
-msgstr "レポートのポップアップウィンドウがブロックされています。このページのポップアップウィンドウを許可するには、ブラウザ設定を変更してください。"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:632
 #, python-format
 msgid "ALL"
-msgstr "すべて"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:633
 #, python-format
 msgid "ANY"
-msgstr "どれでも"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -330,7 +330,7 @@ msgstr "追加"
 #: code:addons/web/static/src/js/views/calendar/calendar_renderer.js:82
 #, python-format
 msgid "Add %s"
-msgstr "%s 追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -344,14 +344,14 @@ msgstr "カスタムフィルタ追加"
 #: code:addons/web/static/src/xml/base.xml:1111
 #, python-format
 msgid "Add Custom Group"
-msgstr "カスタムグループ追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/kanban.xml:49
 #, python-format
 msgid "Add a Column"
-msgstr "カラム追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -365,56 +365,56 @@ msgstr "条件追加"
 #: code:addons/web/static/src/js/views/list/list_editable_renderer.js:78
 #, python-format
 msgid "Add a line"
-msgstr "明細追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:616
 #, python-format
 msgid "Add branch"
-msgstr "ブランチ追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/kanban.xml:48
 #, python-format
 msgid "Add column"
-msgstr "カラム追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:640
 #, python-format
 msgid "Add filter"
-msgstr "フィルタ追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:700
 #, python-format
 msgid "Add new value"
-msgstr "新しい値を追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:615
 #, python-format
 msgid "Add node"
-msgstr "ノード追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/xml/base.xml:701
 #, python-format
 msgid "Add tag"
-msgstr "タグ追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/js/fields/basic_fields.js:1966
 #, python-format
 msgid "Add to Favorites"
-msgstr "お気に入りに追加"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -505,7 +505,6 @@ msgid ""
 "JavaScript file served from a different origin. (Opening your browser "
 "console might give you a hint on the error.)"
 msgstr ""
-"不明のCORSエラーが発生しました。このエラーはおそらく別のソースからのJavaScriptに起因します。(ブラウザコンソールを開くと何かエラーのヒントが得られるかもしれません。)"
 
 #. module: web
 #. openerp-web
@@ -544,7 +543,7 @@ msgstr "アーカイブ"
 #: code:addons/web/static/src/xml/kanban.xml:27
 #, python-format
 msgid "Archive All"
-msgstr "すべてアーカイブ"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -559,14 +558,14 @@ msgstr "アーカイブ済"
 #, python-format
 msgid ""
 "Are you sure that you want to archive all the records from this column?"
-msgstr "本当にこのカラムの全レコードをアーカイブしますか？"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/js/views/list/list_controller.js:156
 #, python-format
 msgid "Are you sure that you want to archive all the selected records?"
-msgstr "本当に選択した全レコードをアーカイブしますか？"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -595,7 +594,7 @@ msgstr "このレコードを本当に削除しますか？"
 #: code:addons/web/static/src/xml/base.xml:1028
 #, python-format
 msgid "Attach"
-msgstr "添付"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -645,7 +644,7 @@ msgstr "基準"
 #: code:addons/web/static/src/xml/base.xml:250
 #, python-format
 msgid "Become Superuser"
-msgstr "スーパーユーザになる"
+msgstr ""
 
 #. module: web
 #: code:addons/web/controllers/main.py:1538
@@ -653,7 +652,7 @@ msgstr "スーパーユーザになる"
 msgid ""
 "Binary fields can not be exported to Excel unless their content is "
 "base64-encoded. That does not seem to be the case for %s."
-msgstr "バイナリ項目はbase64でエンコードされていない限りExcelにエクスポートできません。%sはbase64ではないようです。"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -702,7 +701,7 @@ msgstr "バイト,キロバイト,メガバイト,ギガバイト,テラバイ�
 #: code:addons/web/static/src/xml/base.xml:1222
 #, python-format
 msgid "CLEAR"
-msgstr "クリア"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -738,14 +737,14 @@ msgstr "取消"
 #: code:addons/web/static/src/js/views/graph/graph_renderer.js:106
 #, python-format
 msgid "Cannot render chart with mode : "
-msgstr "次のモードでチャートが表示できません:"
+msgstr ""
 
 #. module: web
 #. openerp-web
 #: code:addons/web/static/src/js/views/kanban/kanban_record.js:414
 #, python-format
 msgid "Card color: %s"
-msgstr "カード色: %s"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -770,7 +769,7 @@ msgstr "デフォルトの変更："
 #: code:addons/web/static/src/js/widgets/colorpicker.js:35
 #, python-format
 msgid "Choose"
-msgstr "選択"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -813,7 +812,7 @@ msgstr "クローズ"
 #: code:addons/web/static/src/xml/kanban.xml:54
 #, python-format
 msgid "Column title"
-msgstr "カラムタイトル"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -864,7 +863,7 @@ msgstr "コネクションが修復されました"
 #: code:addons/web/static/src/xml/base.xml:90
 #, python-format
 msgid "Context:"
-msgstr "コンテキスト:"
+msgstr "コンテキスト："
 
 #. module: web
 #. openerp-web
@@ -886,7 +885,7 @@ msgstr "後続処理"
 #: code:addons/web/static/src/js/services/crash_manager.js:129
 #, python-format
 msgid "Copied !"
-msgstr "コピーされました。"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -894,7 +893,7 @@ msgstr "コピーされました。"
 #: code:addons/web/static/src/xml/base.xml:961
 #, python-format
 msgid "Copy Text"
-msgstr "テキストコピー"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -908,7 +907,7 @@ msgstr "エラーの全てをクリップボードにコピー"
 #: code:addons/web/static/src/js/core/ajax.js:372
 #, python-format
 msgid "Could not connect to the server"
-msgstr "サーバに接続できませんでした"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -1003,7 +1002,7 @@ msgstr "作成:"
 #: code:addons/web/static/src/js/views/calendar/calendar_controller.js:245
 #, python-format
 msgid "Create: %s"
-msgstr "作成: %s"
+msgstr ""
 
 #. module: web
 #: model:ir.model.fields,field_description:web.field_report_layout__create_uid
@@ -1057,7 +1056,7 @@ msgstr "カスタムフィルタ"
 #: code:addons/web/static/src/xml/kanban.xml:88
 #, python-format
 msgid "Dark blue"
-msgstr "ダークブルー"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -1082,7 +1081,6 @@ msgstr "データベース有効期日:"
 
 #. module: web
 #. openerp-web
-#: code:addons/web/static/src/js/views/search/groupby_menu.js:52
 #: code:addons/web/static/src/xml/base.xml:558
 #: code:addons/web/static/src/xml/web_calendar.xml:80
 #, python-format
@@ -1244,7 +1242,7 @@ msgstr "xlsダウンロード"
 #: code:addons/web/static/src/xml/base.xml:1556
 #, python-format
 msgid "Dropdown menu"
-msgstr "ドロップダウンメニュー"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -1938,7 +1936,7 @@ msgstr "読込中(%d)"
 #: code:addons/web/static/src/xml/base.xml:1466
 #, python-format
 msgid "Loading, please wait..."
-msgstr "ロード中です。お待ちください..."
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -2106,7 +2104,6 @@ msgstr "修飾："
 
 #. module: web
 #. openerp-web
-#: code:addons/web/static/src/js/views/search/groupby_menu.js:54
 #: code:addons/web/static/src/xml/base.xml:560
 #: code:addons/web/static/src/xml/web_calendar.xml:82
 #, python-format
@@ -2325,7 +2322,7 @@ msgstr "Odooセッションが無効になりました"
 #: code:addons/web/static/src/js/services/crash_manager.js:194
 #, python-format
 msgid "Odoo Warning"
-msgstr "Odoo警告"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -2407,7 +2404,7 @@ msgstr "オープン"
 #: code:addons/web/static/src/xml/base.xml:231
 #, python-format
 msgid "Open Developer Tools"
-msgstr "開発者ツールを開く"
+msgstr "開発者用ツールを開く"
 
 #. module: web
 #. openerp-web
@@ -2647,7 +2644,6 @@ msgstr "紫"
 
 #. module: web
 #. openerp-web
-#: code:addons/web/static/src/js/views/search/groupby_menu.js:55
 #: code:addons/web/static/src/xml/base.xml:561
 #, python-format
 msgid "Quarter"
@@ -3098,7 +3094,7 @@ msgstr "スイッチオン"
 #: code:addons/web/static/src/js/widgets/domain_selector.js:583
 #, python-format
 msgid "Syntax error"
-msgstr "構文エラー"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -3417,7 +3413,7 @@ msgstr "未定義"
 #: code:addons/web/static/src/xml/kanban.xml:17
 #, python-format
 msgid "Unfold"
-msgstr "展開"
+msgstr ""
 
 #. module: web
 #. openerp-web
@@ -3593,7 +3589,6 @@ msgstr ""
 
 #. module: web
 #. openerp-web
-#: code:addons/web/static/src/js/views/search/groupby_menu.js:53
 #: code:addons/web/static/src/xml/base.xml:559
 #: code:addons/web/static/src/xml/web_calendar.xml:81
 #, python-format
@@ -3605,7 +3600,7 @@ msgstr "週"
 #: code:addons/web/static/src/js/widgets/rainbow_man.js:37
 #, python-format
 msgid "Well Done!"
-msgstr "よくできました!"
+msgstr "よくできました！"
 
 #. module: web
 #. openerp-web
@@ -3650,7 +3645,6 @@ msgstr "XML ID:"
 
 #. module: web
 #. openerp-web
-#: code:addons/web/static/src/js/views/search/groupby_menu.js:56
 #: code:addons/web/static/src/xml/base.xml:562
 #, python-format
 msgid "Year"
@@ -3783,7 +3777,7 @@ msgstr "1ヶ月前"
 #: code:addons/web/static/src/js/core/translation.js:117
 #, python-format
 msgid "about a year ago"
-msgstr "約1年前"
+msgstr "1年前"
 
 #. module: web
 #. openerp-web

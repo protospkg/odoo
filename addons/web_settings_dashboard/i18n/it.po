@@ -180,7 +180,7 @@ msgstr "Invita"
 #: code:addons/web_settings_dashboard/static/src/xml/dashboard.xml:73
 #, python-format
 msgid "Invite new users:"
-msgstr "Invito per nuovi utenti:"
+msgstr "Invito per i nuovi utenti:"
 
 #. module: web_settings_dashboard
 #. openerp-web
@@ -201,7 +201,7 @@ msgstr "Carica una traduzione"
 #: code:addons/web_settings_dashboard/static/src/xml/dashboard.xml:132
 #, python-format
 msgid "Load demo data"
-msgstr "Carica dati dimostrativi"
+msgstr "Caricare dati dimostrativi"
 
 #. module: web_settings_dashboard
 #. openerp-web

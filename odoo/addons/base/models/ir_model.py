@@ -185,6 +185,11 @@ class IrModel(models.Model):
                     self._cr.execute('DROP VIEW "%s"' % table)
                 elif kind == 'r':
                     self._cr.execute('DROP TABLE "%s" CASCADE' % table)
+                    # discard all translations for this model
+                    self._cr.execute("""
+                        DELETE FROM ir_translation
+                        WHERE type IN ('model', 'model_terms') AND name LIKE %s
+                    """, [model.model + ',%'])
             else:
                 _logger.warning('The model %s could not be dropped because it did not exist in the registry.', model.model)
         return True
@@ -198,6 +203,9 @@ class IrModel(models.Model):
                     raise UserError(_("Model '%s' contains module data and cannot be removed.") % model.name)
                 # prevent screwing up fields that depend on these models' fields
                 model.field_id._prepare_update()
+
+        # delete fields whose comodel is being removed
+        self.env['ir.model.fields'].search([('relation', 'in', self.mapped('model'))]).unlink()
 
         self._drop_table()
         res = super(IrModel, self).unlink()
@@ -286,7 +294,7 @@ class IrModel(models.Model):
     def _instanciate(self, model_data):
         """ Return a class for the custom model given by parameters ``model_data``. """
         class CustomModel(models.Model):
-            _name = pycompat.to_native(model_data['model'])
+            _name = pycompat.to_text(model_data['model'])
             _description = model_data['name']
             _module = False
             _custom = True
@@ -353,7 +361,7 @@ class IrModelFields(models.Model):
     domain = fields.Char(default="[]", help="The optional domain to restrict possible values for relationship fields, "
                                             "specified as a Python expression defining a list of triplets. "
                                             "For example: [('color','=','red')]")
-    groups = fields.Many2many('res.groups', 'ir_model_fields_group_rel', 'field_id', 'group_id')
+    groups = fields.Many2many('res.groups', 'ir_model_fields_group_rel', 'field_id', 'group_id') # CLEANME unimplemented field (empty table)
     selectable = fields.Boolean(default=True)
     modules = fields.Char(compute='_in_modules', string='In Apps', help='List of modules in which the field is defined')
     relation_table = fields.Char(help="Used for custom many2many fields to define a custom relation table name")
@@ -402,6 +410,11 @@ class IrModelFields(models.Model):
             _logger.info('Invalid selection list definition for fields.selection', exc_info=True)
             raise UserError(_("The Selection Options expression is not a valid Pythonic expression. "
                               "Please provide an expression in the [('key','Label'), ...] format."))
+
+    @api.constrains('domain')
+    def _check_domain(self):
+        for field in self:
+            safe_eval(field.domain or '[]')
 
     @api.constrains('name', 'state')
     def _check_name(self):
@@ -566,6 +579,12 @@ class IrModelFields(models.Model):
                 tables_to_drop.add(rel_name)
             if field.state == 'manual' and is_model:
                 model._pop_field(field.name)
+            if field.translate:
+                # discard all translations for this field
+                self._cr.execute("""
+                    DELETE FROM ir_translation
+                    WHERE type IN ('model', 'model_terms') AND name=%s
+                """, ['%s,%s' % (field.model, field.name)])
 
         if tables_to_drop:
             # drop the relation tables that are not used by other fields
@@ -620,11 +639,17 @@ class IrModelFields(models.Model):
             for view in views:
                 view._check_xml()
         except Exception:
-            raise UserError("\n".join([
-                _("Cannot rename/delete fields that are still present in views:"),
-                _("Fields: %s") % ", ".join(str(f) for f in fields),
-                _("View: %s") % view.name,
-            ]))
+            if not self._context.get(MODULE_UNINSTALL_FLAG):
+                raise UserError("\n".join([
+                    _("Cannot rename/delete fields that are still present in views:"),
+                    _("Fields: %s") % ", ".join(str(f) for f in fields),
+                    _("View: %s") % view.name,
+                ]))
+            else:
+                # uninstall mode
+                _logger.warn("The following fields were force-deleted to prevent a registry crash "
+                        + ", ".join(str(f) for f in fields)
+                        + " the following view might be broken %s" % view.name)
         finally:
             # the registry has been modified, restore it
             self.pool.setup_models(self._cr)
@@ -720,7 +745,7 @@ class IrModelFields(models.Model):
                 if vals.get('name', item.name) != item.name:
                     # We need to rename the field
                     item._prepare_update()
-                    if item.ttype in ('one2many', 'many2many'):
+                    if item.ttype in ('one2many', 'many2many', 'binary'):
                         # those field names are not explicit in the database!
                         pass
                     else:
@@ -1124,6 +1149,7 @@ class IrModelRelation(models.Model):
 class IrModelAccess(models.Model):
     _name = 'ir.model.access'
     _description = 'Model Access'
+    _order = 'model_id,group_id,name,id'
 
     name = fields.Char(required=True, index=True)
     active = fields.Boolean(default=True, help='If you uncheck the active field, it will disable the ACL without deleting it (if you delete a native ACL, it will be re-created when you reload the module).')
@@ -1157,7 +1183,7 @@ class IrModelAccess(models.Model):
         else:
             model_name = model
 
-        if isinstance(group_ids, pycompat.integer_types):
+        if isinstance(group_ids, int):
             group_ids = [group_ids]
 
         query = """ SELECT 1 FROM ir_model_access a
@@ -1191,11 +1217,11 @@ class IrModelAccess(models.Model):
     @api.model
     @tools.ormcache_context('self._uid', 'model', 'mode', 'raise_exception', keys=('lang',))
     def check(self, model, mode='read', raise_exception=True):
-        if self._uid == 1:
+        if self._uid == SUPERUSER_ID:
             # User root have all accesses
             return True
 
-        assert isinstance(model, pycompat.string_types), 'Not a model name: %s' % (model,)
+        assert isinstance(model, str), 'Not a model name: %s' % (model,)
         assert mode in ('read', 'write', 'create', 'unlink'), 'Invalid access mode'
 
         # TransientModel records have no access rights, only an implicit access rule
@@ -1227,20 +1253,23 @@ class IrModelAccess(models.Model):
             r = self._cr.fetchone()[0]
 
         if not r and raise_exception:
-            groups = '\n\t'.join('- %s' % g for g in self.group_names_with_access(model, mode))
+            groups = '\n'.join('\t- %s' % g for g in self.group_names_with_access(model, mode))
             msg_heads = {
                 # Messages are declared in extenso so they are properly exported in translation terms
-                'read': _("Sorry, you are not allowed to access this document."),
-                'write':  _("Sorry, you are not allowed to modify this document."),
-                'create': _("Sorry, you are not allowed to create this kind of document."),
-                'unlink': _("Sorry, you are not allowed to delete this document."),
+                'read': _("Sorry, you are not allowed to access documents of type '%(document_kind)s' (%(document_model)s)."),
+                'write':  _("Sorry, you are not allowed to modify documents of type '%(document_kind)s' (%(document_model)s)."),
+                'create': _("Sorry, you are not allowed to create documents of type '%(document_kind)s' (%(document_model)s)."),
+                'unlink': _("Sorry, you are not allowed to delete documents of type '%(document_kind)s' (%(document_model)s)."),
+            }
+            msg_params = {
+                'document_kind': self.env['ir.model']._get(model).name or model,
+                'document_model': model,
             }
             if groups:
-                msg_tail = _("Only users with the following access level are currently allowed to do that") + ":\n%s\n\n(" + _("Document model") + ": %s)"
-                msg_params = (groups, model)
+                msg_tail = _("This operation is allowed for the groups:\n%(groups_list)s")
+                msg_params['groups_list'] = groups
             else:
-                msg_tail = _("Please contact your system administrator if you think this is an error.") + "\n\n(" + _("Document model") + ": %s)"
-                msg_params = (model,)
+                msg_tail = _("No group currently allows this operation.")
             _logger.info('Access Denied by ACLs for operation: %s, uid: %s, model: %s', mode, self._uid, model)
             msg = '%s %s' % (msg_heads[mode], msg_tail)
             raise AccessError(msg % msg_params)
@@ -1586,9 +1615,17 @@ class IrModelData(models.Model):
 
         # Remove non-model records first, then model fields, and finish with models
         undeletable += unlink_if_refcount(item for item in to_unlink if item[0] not in ('ir.model', 'ir.model.fields', 'ir.model.constraint'))
+
+        # Remove copied views. This must happen after removing all records from
+        # the modules to remove, otherwise ondelete='restrict' may prevent the
+        # deletion of some view. This must also happen before cleaning up the
+        # database schema, otherwise some dependent fields may no longer exist
+        # in database.
+        modules = self.env['ir.module.module'].search([('name', 'in', modules_to_remove)])
+        modules._remove_copied_views()
+
         undeletable += unlink_if_refcount(item for item in to_unlink if item[0] == 'ir.model.constraint')
 
-        modules = self.env['ir.module.module'].search([('name', 'in', modules_to_remove)])
         constraints = self.env['ir.model.constraint'].search([('module', 'in', modules.ids)])
         constraints._module_data_uninstall()
 

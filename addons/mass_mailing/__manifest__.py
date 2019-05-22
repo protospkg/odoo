@@ -8,7 +8,7 @@
     'version': '2.0',
     'sequence': 110,
     'website': 'https://www.odoo.com/page/mailing',
-    'category': 'Marketing',
+    'category': 'Marketing/Email Marketing',
     'depends': [
         'contacts',
         'mail',
@@ -25,6 +25,7 @@
         'wizard/mass_mailing_list_merge_views.xml',
         'wizard/test_mailing_views.xml',
         'wizard/mass_mailing_schedule_date_views.xml',
+        'views/mass_mailing_views_menus.xml',
         'views/mass_mailing_report_views.xml',
         'views/mass_mailing_stats_views.xml',
         'views/link_tracker_views.xml',
@@ -42,6 +43,9 @@
     ],
     'demo': [
         'data/mass_mailing_demo.xml',
+    ],
+    'qweb': [
+        'static/src/xml/*.xml',
     ],
     'application': True,
 }

@@ -31,22 +31,12 @@ try:
 except ImportError:
     astor = None
 
+from odoo.tools.parse_version import parse_version
+
 unsafe_eval = eval
 
 _logger = logging.getLogger(__name__)
 
-# in Python 2, arguments (within the ast.arguments structure) are expressions
-# (since they can be tuples), generally
-# ast.Name(id: identifyer, ctx=ast.Param()), whereas in Python 3 they are
-# ast.arg(arg: identifier, annotation: expr?) provide a toplevel arg()
-# function which matches ast.arg producing the relevant ast.Name in Python 2.
-arg = getattr(ast, 'arg', lambda arg, annotation: ast.Name(id=arg, ctx=ast.Param()))
-# also Python 3's arguments has grown *2* new mandatory arguments, kwonlyargs
-# and kw_defaults for keyword-only arguments and their default values (if any)
-# so add a shim for *that* based on the signature of Python 3 I guess?
-arguments = ast.arguments
-if pycompat.PY2:
-    arguments = lambda args, vararg, kwonlyargs, kw_defaults, kwarg, defaults: ast.arguments(args=args, vararg=vararg, kwarg=kwarg, defaults=defaults)
 ####################################
 ###          qweb tools          ###
 ####################################
@@ -90,15 +80,12 @@ class Contextifier(ast.NodeTransformer):
     def visit_Lambda(self, node):
         args = node.args
         # assume we don't have any tuple parameter, just names
-        if pycompat.PY2:
-            names = [arg.id for arg in args.args]
-        else:
-            names = [arg.arg for arg in args.args]
+        names = [arg.arg for arg in args.args]
         if args.vararg: names.append(args.vararg)
         if args.kwarg: names.append(args.kwarg)
         # remap defaults in case there's any
         return ast.copy_location(ast.Lambda(
-            args=arguments(
+            args=ast.arguments(
                 args=args.args,
                 defaults=[self.visit(default) for default in args.defaults],
                 vararg=args.vararg,
@@ -176,7 +163,7 @@ class QWebException(Exception):
         return str(self)
 
 # Avoid DeprecationWarning while still remaining compatible with werkzeug pre-0.9
-escape = (lambda text: _escape(text, quote=True)) if getattr(werkzeug, '__version__', '0.0') < '0.9.0' else _escape
+escape = (lambda text: _escape(text, quote=True)) if parse_version(getattr(werkzeug, '__version__', '0.0')) < parse_version('0.9.0') else _escape
 
 def foreach_iterator(base_ctx, enum, name):
     ctx = base_ctx.copy()
@@ -190,7 +177,7 @@ def foreach_iterator(base_ctx, enum, name):
     if isinstance(enum, Mapping):
         enum = enum.items()
     else:
-        enum = pycompat.izip(*tee(enum))
+        enum = zip(*tee(enum))
     value_key = '%s_value' % name
     index_key = '%s_index' % name
     first_key = '%s_first' % name
@@ -371,22 +358,25 @@ class QWeb(object):
             except QWebException as e:
                 raise e
             except Exception as e:
-                raise QWebException("load could not load template", name=template)
+                template = options.get('caller_template', template)
+                path = options['last_path_node']
+                raise QWebException("load could not load template", e, path, name=template)
 
-        if document is not None:
-            if isinstance(document, etree._Element):
-                element = document
-                document = etree.tostring(document)
-            elif not document.strip().startswith('<') and os.path.exists(document):
-                element = etree.parse(document).getroot()
-            else:
-                element = etree.fromstring(document)
+        if document is None:
+            raise QWebException("Template not found", name=template)
 
-            for node in element:
-                if node.get('t-name') == str(template):
-                    return (node, document)
+        if isinstance(document, etree._Element):
+            element = document
+            document = etree.tostring(document)
+        elif not document.strip().startswith('<') and os.path.exists(document):
+            element = etree.parse(document).getroot()
+        else:
+            element = etree.fromstring(document)
 
-        raise QWebException("Template not found", name=template)
+        for node in element:
+            if node.get('t-name') == str(template):
+                return (node, document)
+        return (element, document)
 
     def load(self, template, options):
         """ Load a given template. """
@@ -526,11 +516,10 @@ class QWeb(object):
         Define:
         * escape
         * to_text (empty string for a None or False, otherwise unicode string)
-        * string_types (replacement for basestring)
         """
         return ast.parse(dedent("""
             from collections import OrderedDict
-            from odoo.tools.pycompat import to_text, string_types
+            from odoo.tools.pycompat import to_text
             from odoo.addons.base.models.qweb import escape, foreach_iterator
             """))
 
@@ -547,12 +536,12 @@ class QWeb(object):
         # def $name(self, append, values, options, log)
         fn = ast.FunctionDef(
             name=name,
-            args=arguments(args=[
-                arg(arg='self', annotation=None),
-                arg(arg='append', annotation=None),
-                arg(arg='values', annotation=None),
-                arg(arg='options', annotation=None),
-                arg(arg='log', annotation=None),
+            args=ast.arguments(args=[
+                ast.arg(arg='self', annotation=None),
+                ast.arg(arg='append', annotation=None),
+                ast.arg(arg='values', annotation=None),
+                ast.arg(arg='options', annotation=None),
+                ast.arg(arg='log', annotation=None),
             ], defaults=[], vararg=None, kwarg=None, kwonlyargs=[], kw_defaults=[]),
             body=body or [ast.Return()],
             decorator_list=[])
@@ -743,7 +732,7 @@ class QWeb(object):
                                 func=ast.Name(id='isinstance', ctx=ast.Load()),
                                 args=[
                                     ast.Name(id='value', ctx=ast.Load()),
-                                    ast.Name(id='string_types', ctx=ast.Load())
+                                    ast.Name(id='str', ctx=ast.Load())
                                 ],
                                 keywords=[],
                                 starargs=None, kwargs=None
@@ -1467,26 +1456,26 @@ class QWeb(object):
                 )
             )
 
-        if nsmap or call_options:
-            # copy the original dict of options to pass to the callee
-            name_options = self._make_name('options')
-            content.append(
-                # options_ = options.copy()
-                ast.Assign(
-                    targets=[ast.Name(id=name_options, ctx=ast.Store())],
-                    value=ast.Call(
-                        func=ast.Attribute(
-                            value=ast.Name(id='options', ctx=ast.Load()),
-                            attr='copy',
-                            ctx=ast.Load()
-                        ),
-                        args=[], keywords=[], starargs=None, kwargs=None
-                    )
+        name_options = self._make_name('options')
+        # copy the original dict of options to pass to the callee
+        content.append(
+            # options_ = options.copy()
+            ast.Assign(
+                targets=[ast.Name(id=name_options, ctx=ast.Store())],
+                value=ast.Call(
+                    func=ast.Attribute(
+                        value=ast.Name(id='options', ctx=ast.Load()),
+                        attr='copy',
+                        ctx=ast.Load()
+                    ),
+                    args=[], keywords=[], starargs=None, kwargs=None
                 )
             )
+        )
+        if nsmap or call_options:
 
             if call_options:
-            # update this dict with the content of `t-call-options`
+                # update this dict with the content of `t-call-options`
                 content.extend([
                     # options_.update(template options)
                     ast.Expr(ast.Call(
@@ -1497,7 +1486,56 @@ class QWeb(object):
                         ),
                         args=[self._compile_expr(call_options)],
                         keywords=[], starargs=None, kwargs=None
-                    ))
+                    )),
+
+                    # if options.get('lang') != options_.get('lang'):
+                    #   self = self.with_context(lang=options.get('lang'))
+                    ast.If(
+                        test=ast.Compare(
+                            left=ast.Call(
+                                func=ast.Attribute(
+                                    value=ast.Name(id='options', ctx=ast.Load()),
+                                    attr='get',
+                                    ctx=ast.Load()
+                                ),
+                                args=[ast.Str("lang")], keywords=[],
+                                starargs=None, kwargs=None
+                            ),
+                            ops=[ast.NotEq()],
+                            comparators=[ast.Call(
+                                func=ast.Attribute(
+                                    value=ast.Name(id=name_options, ctx=ast.Load()),
+                                    attr='get',
+                                    ctx=ast.Load()
+                                ),
+                                args=[ast.Str("lang")], keywords=[],
+                                starargs=None, kwargs=None
+                            )]
+                        ),
+                        body=[
+                            ast.Assign(
+                                targets=[ast.Name(id='self', ctx=ast.Store())],
+                                value=ast.Call(
+                                    func=ast.Attribute(
+                                        value=ast.Name(id='self', ctx=ast.Load()),
+                                        attr='with_context',
+                                        ctx=ast.Load()
+                                    ),
+                                    args=[],
+                                    keywords=[ast.keyword('lang', ast.Call(
+                                        func=ast.Attribute(
+                                            value=ast.Name(id=name_options, ctx=ast.Load()),
+                                            attr='get',
+                                            ctx=ast.Load()
+                                        ),
+                                        args=[ast.Str("lang")], keywords=[],
+                                        starargs=None, kwargs=None
+                                    ))],
+                                    starargs=None, kwargs=None
+                                )
+                            )],
+                        orelse=[],
+                    )
                 ])
 
             if nsmap:
@@ -1508,7 +1546,7 @@ class QWeb(object):
                 keys = []
                 values = []
                 for key, value in options['nsmap'].items():
-                    if isinstance(key, pycompat.string_types):
+                    if isinstance(key, str):
                         keys.append(ast.Str(s=key))
                     elif key is None:
                         keys.append(ast.Name(id='None', ctx=ast.Load()))
@@ -1532,8 +1570,30 @@ class QWeb(object):
                         keywords=[], starargs=None, kwargs=None
                     ))
                 )
-        else:
-            name_options = 'options'
+
+        # options_.update({
+        #     'caller_template': str(options.get('template')),
+        #     'last_path_node': str(options['root'].getpath(el)),
+        # })
+        content.append(
+            ast.Expr(ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id=name_options, ctx=ast.Load()),
+                    attr='update',
+                    ctx=ast.Load()
+                ),
+                args=[
+                    ast.Dict(
+                        keys=[ast.Str(s='caller_template'), ast.Str(s='last_path_node')],
+                        values=[
+                            ast.Str(s=str(options.get('template'))),
+                            ast.Str(s=str(options['root'].getpath(el))),
+                        ]
+                    )
+                ],
+                keywords=[], starargs=None, kwargs=None
+            ))
+        )
 
         # self.compile($tmpl, options)(self, append, values_copy)
         content.append(
@@ -1609,32 +1669,26 @@ class QWeb(object):
 
     def _compile_expr0(self, expr):
         if expr == "0":
-            # values.get(0) and u''.join(values[0])
-            return ast.BoolOp(
-                    op=ast.And(),
-                    values=[
-                        ast.Call(
-                            func=ast.Attribute(
-                                value=ast.Name(id='values', ctx=ast.Load()),
-                                attr='get',
-                                ctx=ast.Load()
-                            ),
-                            args=[ast.Num(0)], keywords=[],
-                            starargs=None, kwargs=None
+            # u''.join(values.get(0, []))
+            return ast.Call(
+                func=ast.Attribute(
+                    value=ast.Str(u''),
+                    attr='join',
+                    ctx=ast.Load()
+                ),
+                args=[
+                    ast.Call(
+                        func=ast.Attribute(
+                            value=ast.Name(id='values', ctx=ast.Load()),
+                            attr='get',
+                            ctx=ast.Load()
                         ),
-                        ast.Call(
-                            func=ast.Attribute(
-                                value=ast.Str(u''),
-                                attr='join',
-                                ctx=ast.Load()
-                            ),
-                            args=[
-                                self._values_var(ast.Num(0), ctx=ast.Load())
-                            ],
-                            keywords=[], starargs=None, kwargs=None
-                        )
-                    ]
-                )
+                        args=[ast.Num(0), ast.List(elts=[], ctx=ast.Load())], keywords=[],
+                        starargs=None, kwargs=None
+                    )
+                ],
+                keywords=[], starargs=None, kwargs=None
+            )
         return self._compile_expr(expr)
 
     def _compile_format(self, f):
@@ -1646,7 +1700,7 @@ class QWeb(object):
         for m in _FORMAT_REGEX.finditer(f):
             literal = f[base_idx:m.start()]
             if literal:
-                elts.append(ast.Str(literal if isinstance(literal, pycompat.text_type) else literal.decode('utf-8')))
+                elts.append(ast.Str(literal if isinstance(literal, str) else literal.decode('utf-8')))
 
             expr = m.group(1) or m.group(2)
             elts.append(self._compile_strexpr(expr))
@@ -1654,7 +1708,7 @@ class QWeb(object):
         # string past last regex match
         literal = f[base_idx:]
         if literal:
-            elts.append(ast.Str(literal if isinstance(literal, pycompat.text_type) else literal.decode('utf-8')))
+            elts.append(ast.Str(literal if isinstance(literal, str) else literal.decode('utf-8')))
 
         return reduce(lambda acc, it: ast.BinOp(
             left=acc,

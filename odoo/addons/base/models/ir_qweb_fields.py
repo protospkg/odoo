@@ -224,6 +224,7 @@ class DateTimeConverter(models.AbstractModel):
             format=dict(type='string', string=_('Pattern to format')),
             time_only=dict(type='boolean', string=_('Display only the time')),
             hide_seconds=dict(type='boolean', string=_('Hide seconds')),
+            date_only=dict(type='boolean', string=_('Display only the date')),
         )
         return options
 
@@ -234,7 +235,7 @@ class DateTimeConverter(models.AbstractModel):
         lang = self.user_lang()
         locale = babel.Locale.parse(lang.code)
 
-        if isinstance(value, pycompat.string_types):
+        if isinstance(value, str):
             value = fields.Datetime.from_string(value)
 
         value = fields.Datetime.context_timestamp(self, value)
@@ -244,6 +245,8 @@ class DateTimeConverter(models.AbstractModel):
         else:
             if options and options.get('time_only'):
                 strftime_pattern = (u"%s" % (lang.time_format))
+            elif options and options.get('date_only'):
+                strftime_pattern = (u"%s" % (lang.date_format))
             else:
                 strftime_pattern = (u"%s %s" % (lang.date_format, lang.time_format))
 
@@ -417,7 +420,7 @@ class MonetaryConverter(models.AbstractModel):
             if company_id:
                 company = self.env['res.company'].browse(company_id)
             else:
-                company = self.env.user.company_id
+                company = self.env.company_id
             value = options['from_currency']._convert(value, display_currency, company, date)
 
         lang = self.user_lang()
@@ -479,6 +482,10 @@ class FloatTimeConverter(models.AbstractModel):
     def value_to_html(self, value, options):
         sign = math.copysign(1.0, value)
         hours, minutes = divmod(abs(value) * 60, 60)
+        minutes = round(minutes)
+        if minutes == 60:
+            minutes = 0
+            hours += 1
         return '%02d:%02d' % (sign * hours, minutes)
 
 
@@ -572,7 +579,7 @@ class RelativeDatetimeConverter(models.AbstractModel):
     def value_to_html(self, value, options):
         locale = babel.Locale.parse(self.user_lang().code)
 
-        if isinstance(value, pycompat.string_types):
+        if isinstance(value, str):
             value = fields.Datetime.from_string(value)
 
         # value should be a naive datetime in UTC. So is fields.Datetime.now()
@@ -637,7 +644,7 @@ class Contact(models.AbstractModel):
 
     @api.model
     def value_to_html(self, value, options):
-        if not value.exists():
+        if not value:
             return False
 
         opf = options and options.get('fields') or ["name", "address", "phone", "mobile", "email"]
@@ -658,7 +665,7 @@ class Contact(models.AbstractModel):
             'object': value,
             'options': options
         }
-        return self.env['ir.qweb'].render('base.contact', val, **options.get('template_options'))
+        return self.env['ir.qweb'].render('base.contact', val, **options.get('template_options', dict()))
 
 
 class QwebView(models.AbstractModel):

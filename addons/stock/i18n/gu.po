@@ -3,22 +3,21 @@
 # * stock
 # 
 # Translators:
-# Gaurav Marsoniya <marsoniyagaurav@gmail.com>, 2018
-# Ajay Chauhan, 2018
-# Divya Pandya <dia@odoo.com>, 2018
-# Ranjit Pillai <rpi@odoo.com>, 2018
-# Turkesh Patel <turkesh4friends@gmail.com>, 2018
-# Dharmraj Jhala <dja@openerp.com>, 2018
-# Spellbound Soft Solutions <jeel.spellbound@gmail.com>, 2018
 # Martin Trigaux, 2018
-# 
+# Gaurav Marsoniya <marsoniyagaurav@gmail.com>, 2018
+# Dharmraj Jhala <dja@openerp.com>, 2018
+# Divya Pandya <dia@odoo.com>, 2018
+# Ajay Chauhan, 2018
+# Turkesh Patel <turkesh4friends@gmail.com>, 2018
+# Ranjit Pillai <rpi@odoo.com>, 2018
+# Spellbound Soft Solutions <jeel.spellbound@gmail.com>, 2018
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server 12.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2018-12-19 08:20+0000\n"
-"PO-Revision-Date: 2018-08-24 09:25+0000\n"
-"Last-Translator: Martin Trigaux, 2018\n"
+"POT-Creation-Date: 2018-10-24 09:34+0000\n"
+"PO-Revision-Date: 2018-10-24 09:34+0000\n"
+"Last-Translator: Spellbound Soft Solutions <jeel.spellbound@gmail.com>, 2018\n"
 "Language-Team: Gujarati (https://www.transifex.com/odoo/teams/41243/gu/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -1017,7 +1016,6 @@ msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,help:stock.field_product_replenish__product_uom_category_id
-#: model:ir.model.fields,help:stock.field_stock_inventory_line__product_uom_category_id
 msgid ""
 "Conversion between Units of Measure can only occur if they belong to the "
 "same category. The conversion will be made based on the ratios."
@@ -1309,7 +1307,7 @@ msgstr "ગ્રાહકો"
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_dhl
-msgid "DHL Connector"
+msgid "DHL USA"
 msgstr ""
 
 #. module: stock
@@ -1743,7 +1741,7 @@ msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_easypost
-msgid "Easypost Connector"
+msgid "Easypost"
 msgstr ""
 
 #. module: stock
@@ -1810,7 +1808,7 @@ msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_fedex
-msgid "FedEx Connector"
+msgid "FedEx"
 msgstr ""
 
 #. module: stock
@@ -5975,12 +5973,12 @@ msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_ups
-msgid "UPS Connector"
+msgid "UPS"
 msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_usps
-msgid "USPS Connector"
+msgid "USPS"
 msgstr ""
 
 #. module: stock
@@ -6108,11 +6106,6 @@ msgstr ""
 #. module: stock
 #: model:ir.ui.menu,name:stock.menu_stock_uom_categ_form_action
 msgid "UoM Categories"
-msgstr ""
-
-#. module: stock
-#: model:ir.model.fields,field_description:stock.field_stock_inventory_line__product_uom_category_id
-msgid "Uom category"
 msgstr ""
 
 #. module: stock
@@ -6779,7 +6772,7 @@ msgstr ""
 
 #. module: stock
 #: model:ir.model.fields,field_description:stock.field_res_config_settings__module_delivery_bpost
-msgid "bpost Connector"
+msgid "bpost"
 msgstr ""
 
 #. module: stock

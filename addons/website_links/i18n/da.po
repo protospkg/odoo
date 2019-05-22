@@ -6,17 +6,16 @@
 # Martin Trigaux, 2018
 # Jarnhold Nattestad <nattestads@gmail.com>, 2018
 # Pernille Kristensen <pernillekristensen1994@gmail.com>, 2018
+# Sanne Kristensen <sanne@vkdata.dk>, 2018
 # Ejner Sønniksen <ejner@vkdata.dk>, 2018
 # lhmflexerp <lhm@flexerp.dk>, 2018
-# Sanne Kristensen <sanne@vkdata.dk>, 2018
-# 
 msgid ""
 msgstr ""
 "Project-Id-Version: Odoo Server saas~11.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2018-09-18 09:49+0000\n"
-"PO-Revision-Date: 2018-08-24 09:34+0000\n"
-"Last-Translator: Sanne Kristensen <sanne@vkdata.dk>, 2018\n"
+"PO-Revision-Date: 2018-09-18 09:49+0000\n"
+"Last-Translator: lhmflexerp <lhm@flexerp.dk>, 2018\n"
 "Language-Team: Danish (https://www.transifex.com/odoo/teams/41243/da/)\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -48,7 +47,7 @@ msgstr "# Klik"
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.share_page_menu
 msgid "<span title=\"Track this page to count clicks\">Track this Page</span>"
-msgstr "<span title=\"Track this page to count clicks\">Spor denne side</span>"
+msgstr "<span title=\"Track this page to count clicks\">Spor denne Side</span>"
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
@@ -78,12 +77,12 @@ msgstr "<strong>Kilde</strong>"
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
 msgid "<strong>Tracked Link</strong>"
-msgstr "<strong>Sporede links</strong>"
+msgstr ""
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
 msgid "All Time"
-msgstr "Hele tiden"
+msgstr ""
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
@@ -93,10 +92,6 @@ msgid ""
 "the context of your link. It might be an event you want to promote or a "
 "special promotion.\"/>"
 msgstr ""
-"Kampagne <i class=\"fa fa-info-circle\" data-toggle=\"tooltip\" data-"
-"placement=\"top\" role=\"img\" aria-label=\"Tooltip info\" title=\"Defines "
-"the context of your link. It might be an event you want to promote or a "
-"special promotion.\"/>"
 
 #. module: website_links
 #. openerp-web
@@ -111,7 +106,7 @@ msgstr "Kopiér"
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
 #, python-format
 msgid "Edit code"
-msgstr "Skift kode"
+msgstr ""
 
 #. module: website_links
 #. openerp-web
@@ -123,7 +118,7 @@ msgstr "Genererer link..."
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
 msgid "Get tracked link"
-msgstr "Hent sporede links"
+msgstr ""
 
 #. module: website_links
 #. openerp-web
@@ -140,7 +135,7 @@ msgstr "Sidste måned"
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
 msgid "Last Week"
-msgstr "Sidste uge"
+msgstr "Sidste Uge"
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
@@ -156,15 +151,11 @@ msgid ""
 "the medium used to share your link. It might be an email, or a Facebook Ads "
 "for instance.\"/>"
 msgstr ""
-"Medium <i class=\"fa fa-info-circle\" data-toggle=\"tooltip\" data-"
-"placement=\"top\" role=\"img\" aria-label=\"Tooltip info\" title=\"Defines "
-"the medium used to share your link. It might be an email, or a Facebook Ads "
-"for instance.\"/>"
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
 msgid "Most Clicked"
-msgstr "Klikket mest på"
+msgstr "Klikket Mest På"
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
@@ -182,8 +173,6 @@ msgid ""
 "Share this page with a <strong>short link</strong> that includes "
 "<strong>analytics trackers</strong>."
 msgstr ""
-"Del denne side med et <strong>kort link</strong> som inkluderer "
-"<strong>analytiske sproringer</strong>."
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
@@ -193,10 +182,6 @@ msgid ""
 "the source from which your traffic will come from, Facebook or Twitter for "
 "instance.\"/>"
 msgstr ""
-"Kilde <i class=\"fa fa-info-circle\" data-toggle=\"tooltip\" data-"
-"placement=\"top\" role=\"img\" aria-label=\"Tooltip info\" title=\"Defines "
-"the source from which your traffic will come from, Facebook or Twitter for "
-"instance.\"/>"
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
@@ -225,8 +210,6 @@ msgid ""
 "Those trackers can be used in Google Analytics to track clicks and visitors,"
 " or in Odoo reports to track opportunities and related revenues."
 msgstr ""
-"Disse sporinger kan bruges i Google Analytics til at spore klik og besøgende"
-" eller i Odoo rapporter til at spore muligheder og relaterede indtægter."
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
@@ -238,7 +221,7 @@ msgstr "URL"
 #: code:addons/website_links/static/src/js/website_links.js:225
 #, python-format
 msgid "Unable to get recent links"
-msgstr "Kunne ikke hente de seneste links"
+msgstr ""
 
 #. module: website_links
 #. openerp-web
@@ -252,12 +235,12 @@ msgstr "Udefineret"
 #: code:addons/website_links/static/src/js/website_links.js:248
 #, python-format
 msgid "You don't have any recent links."
-msgstr "Du har ingen nylige links."
+msgstr ""
 
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.create_shorten_url
 msgid "Your tracked links"
-msgstr "Dine sporede links"
+msgstr ""
 
 #. module: website_links
 #. openerp-web
@@ -277,7 +260,7 @@ msgstr "klik"
 #. module: website_links
 #: model_terms:ir.ui.view,arch_db:website_links.graphs
 msgid "copy"
-msgstr "kopi"
+msgstr ""
 
 #. module: website_links
 #. openerp-web
@@ -291,7 +274,7 @@ msgstr "fx Nyhedsbrev, Socialt Netværk, .."
 #: code:addons/website_links/static/src/js/website_links.js:263
 #, python-format
 msgid "e.g. Promotion of June, Winter Newsletter, .."
-msgstr "f.eks. Annoncering i juni, vinter nyhedsbrev, .."
+msgstr ""
 
 #. module: website_links
 #. openerp-web

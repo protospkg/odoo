@@ -172,6 +172,11 @@ class MrpWorkcenter(models.Model):
         return super(MrpWorkcenter, self.with_context({
             'default_resource_type': 'material'})).create(vals)
 
+    @api.multi
+    def action_work_order(self):
+        action = self.env.ref('mrp.action_work_orders').read()[0]
+        return action
+
 
 class MrpWorkcenterProductivityLossType(models.Model):
     _name = "mrp.workcenter.productivity.loss.type"
@@ -238,7 +243,7 @@ class MrpWorkcenterProductivity(models.Model):
                 d2 = fields.Datetime.from_string(blocktime.date_end)
                 diff = d2 - d1
                 if (blocktime.loss_type not in ('productive', 'performance')) and blocktime.workcenter_id.resource_calendar_id:
-                    r = blocktime.workcenter_id.get_work_days_data(d1, d2)['hours']
+                    r = blocktime.workcenter_id._get_work_days_data(d1, d2)['hours']
                     blocktime.duration = round(r * 60, 2)
                 else:
                     blocktime.duration = round(diff.total_seconds() / 60.0, 2)

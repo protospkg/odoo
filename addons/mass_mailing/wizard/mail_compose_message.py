@@ -62,10 +62,10 @@ class MailComposeMessage(models.TransientModel):
             for res_id in res_ids:
                 mail_values = res[res_id]
                 if mail_values.get('email_to'):
-                    recips = tools.email_split(mail_values['email_to'])
+                    mail_to = tools.email_normalize(mail_values['email_to'])
                 else:
-                    recips = tools.email_split(partners_email.get(res_id))
-                mail_to = recips[0].lower() if recips else False
+                    partner_id = (mail_values.get('recipient_ids') or [(False, '')])[0][1]
+                    mail_to = tools.email_normalize(partners_email.get(partner_id))
                 if (opt_out_list and mail_to in opt_out_list) or (seen_list and mail_to in seen_list) \
                         or (not mail_to or not email_re.findall(mail_to)):
                     # prevent sending to blocked addresses that were included by mistake

@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
-from odoo.tools import float_compare, float_round, float_is_zero, pycompat
+from odoo.tools import float_compare, float_round, float_is_zero
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -24,11 +24,10 @@ class StockInventory(models.Model):
     def post_inventory(self):
         acc_inventories = self.filtered(lambda inventory: inventory.accounting_date)
         for inventory in acc_inventories:
-            res = super(StockInventory, inventory.with_context(force_period_date=inventory.accounting_date)).post_inventory()
+            super(StockInventory, inventory.with_context(force_period_date=inventory.accounting_date)).post_inventory()
         other_inventories = self - acc_inventories
         if other_inventories:
-            res = super(StockInventory, other_inventories).post_inventory()
-        return res
+            super(StockInventory, other_inventories).post_inventory()
 
 
 class StockLocation(models.Model):
@@ -133,7 +132,7 @@ class StockMoveLine(models.Model):
 class StockMove(models.Model):
     _inherit = "stock.move"
 
-    to_refund = fields.Boolean(string="To Refund (update SO/PO)", copy=False,
+    to_refund = fields.Boolean(string="Update quantities on SO/PO", copy=False,
                                help='Trigger a decrease of the delivered/received quantity in the associated Sale Order/Purchase Order')
     value = fields.Float(copy=False)
     remaining_qty = fields.Float(copy=False)
@@ -156,24 +155,50 @@ class StockMove(models.Model):
 
     @api.model
     def _get_in_base_domain(self, company_id=False):
+        # Domain:
+        # - state is done
+        # - coming from a location without company, or an inventory location within the same company
+        # - going to a location within the same company
         domain = [
             ('state', '=', 'done'),
-            ('location_id.company_id', '=', False),
-            ('location_dest_id.company_id', '=', company_id or self.env.user.company_id.id)
+            '&',
+                '|',
+                    ('location_id.company_id', '=', False),
+                    '&',
+                        ('location_id.usage', 'in', ['inventory', 'production']),
+                        ('location_id.company_id', '=', company_id or self.env.company_id.id),
+                ('location_dest_id.company_id', '=', company_id or self.env.company_id.id),
         ]
         return domain
 
     @api.model
     def _get_all_base_domain(self, company_id=False):
+        # Domain:
+        # - state is done
+        # Then, either 'in' or 'out' moves.
+        # 'in' moves:
+        # - coming from a location without company, or an inventory location within the same company
+        # - going to a location within the same company
+        # 'out' moves:
+        # - coming from to a location within the same company
+        # - going to a location without company, or an inventory location within the same company
         domain = [
             ('state', '=', 'done'),
             '|',
                 '&',
-                    ('location_id.company_id', '=', False),
-                    ('location_dest_id.company_id', '=', company_id or self.env.user.company_id.id),
+                    '|',
+                        ('location_id.company_id', '=', False),
+                        '&',
+                            ('location_id.usage', 'in', ['inventory', 'production']),
+                            ('location_id.company_id', '=', company_id or self.env.company_id.id),
+                    ('location_dest_id.company_id', '=', company_id or self.env.company_id.id),
                 '&',
-                    ('location_id.company_id', '=', company_id or self.env.user.company_id.id),
-                    ('location_dest_id.company_id', '=', False)
+                    ('location_id.company_id', '=', company_id or self.env.company_id.id),
+                    '|',
+                        ('location_dest_id.company_id', '=', False),
+                        '&',
+                            ('location_dest_id.usage', '=', 'inventory'),
+                            ('location_dest_id.company_id', '=', company_id or self.env.company_id.id),
         ]
         return domain
 
@@ -241,7 +266,7 @@ class StockMove(models.Model):
 
         # Find back incoming stock moves (called candidates here) to value this move.
         qty_to_take_on_candidates = quantity or valued_quantity
-        candidates = move.product_id._get_fifo_candidates_in_move()
+        candidates = move.product_id._get_fifo_candidates_in_move_with_company(move.company_id.id)
         new_standard_price = 0
         tmp_value = 0  # to accumulate the value taken on the candidates
         for candidate in candidates:
@@ -278,7 +303,7 @@ class StockMove(models.Model):
         if qty_to_take_on_candidates == 0:
             move.write({
                 'value': -tmp_value if not quantity else move.value or -tmp_value,  # outgoing move are valued negatively
-                'price_unit': -tmp_value / move.product_qty,
+                'price_unit': -tmp_value / (move.product_qty or quantity),
             })
         elif qty_to_take_on_candidates > 0:
             last_fifo_price = new_standard_price or move.product_id.standard_price
@@ -295,6 +320,7 @@ class StockMove(models.Model):
 
     def _run_valuation(self, quantity=None):
         self.ensure_one()
+        value_to_return = 0
         if self._is_in():
             valued_move_lines = self.move_line_ids.filtered(lambda ml: not ml.location_id._should_be_valued() and ml.location_dest_id._should_be_valued() and not ml.owner_id)
             valued_quantity = 0
@@ -352,11 +378,11 @@ class StockMove(models.Model):
                 'value': value_to_return,
                 'price_unit': price_unit if self._is_dropshipped() else -price_unit,
             })
-            return value_to_return
+        return value_to_return
 
-    def _action_done(self):
+    def _action_done(self, cancel_backorder=False):
         self.product_price_update_before_done()
-        res = super(StockMove, self)._action_done()
+        res = super(StockMove, self)._action_done(cancel_backorder=cancel_backorder)
         for move in res:
             # Apply restrictions on the stock move to be able to make
             # consistent accounting entries.
@@ -383,11 +409,11 @@ class StockMove(models.Model):
         tmpl_dict = defaultdict(lambda: 0.0)
         # adapt standard price on incomming moves if the product cost_method is 'average'
         std_price_update = {}
-        for move in self.filtered(lambda move: move.location_id.usage in ('supplier', 'production') and move.product_id.cost_method == 'average'):
+        for move in self.filtered(lambda move: move._is_in() and move.product_id.cost_method == 'average'):
             product_tot_qty_available = move.product_id.qty_available + tmpl_dict[move.product_id.id]
             rounding = move.product_id.uom_id.rounding
 
-            qty_done = 0.0
+            qty_done = move.product_uom._compute_quantity(move.quantity_done, move.product_id.uom_id)
             if float_is_zero(product_tot_qty_available, precision_rounding=rounding):
                 new_std_price = move._get_price_unit()
             elif float_is_zero(product_tot_qty_available + move.product_qty, precision_rounding=rounding) or \
@@ -396,9 +422,8 @@ class StockMove(models.Model):
             else:
                 # Get the standard price
                 amount_unit = std_price_update.get((move.company_id.id, move.product_id.id)) or move.product_id.standard_price
-                qty_done = move.product_uom._compute_quantity(move.quantity_done, move.product_id.uom_id)
                 qty = forced_qty or qty_done
-                new_std_price = ((amount_unit * product_tot_qty_available) + (move._get_price_unit() * qty)) / (product_tot_qty_available + qty_done)
+                new_std_price = ((amount_unit * product_tot_qty_available) + (move._get_price_unit() * qty)) / (product_tot_qty_available + qty)
 
             tmpl_dict[move.product_id.id] += qty_done
             # Write the standard price, as SUPERUSER_ID because a warehouse manager may not have the right to write on products
@@ -481,14 +506,10 @@ class StockMove(models.Model):
     def _run_fifo_vacuum(self):
         # Call `_fifo_vacuum` on concerned moves
         fifo_valued_products = self.env['product.product']
-        fifo_valued_products |= self.env['product.template'].search([('property_cost_method', '=', 'fifo')]).mapped(
-            'product_variant_ids')
         fifo_valued_categories = self.env['product.category'].search([('property_cost_method', '=', 'fifo')])
         fifo_valued_products |= self.env['product.product'].search([('categ_id', 'child_of', fifo_valued_categories.ids)])
-        moves_to_vacuum = self.env['stock.move']
-        for product in fifo_valued_products:
-            moves_to_vacuum |= self.search(
-                [('product_id', '=', product.id), ('remaining_qty', '<', 0)] + self._get_all_base_domain())
+        moves_to_vacuum = self.search(
+            [('product_id', 'in', fifo_valued_products.ids), ('remaining_qty', '<', 0)] + self._get_all_base_domain())
         moves_to_vacuum._fifo_vacuum()
 
     @api.multi
@@ -539,7 +560,7 @@ class StockMove(models.Model):
         debit_value = self.company_id.currency_id.round(valuation_amount)
 
         # check that all data is correct
-        if self.company_id.currency_id.is_zero(debit_value):
+        if self.company_id.currency_id.is_zero(debit_value) and not self.env['ir.config_parameter'].sudo().get_param('stock_account.allow_zero_cost'):
             raise UserError(_("The cost of %s is currently equal to 0. Change the cost or the configuration of your product to avoid an incorrect valuation.") % (self.product_id.display_name,))
         credit_value = debit_value
 
@@ -695,6 +716,13 @@ class StockMove(models.Model):
 class StockReturnPicking(models.TransientModel):
     _inherit = "stock.return.picking"
 
+    @api.model
+    def default_get(self, default_fields):
+        res = super(StockReturnPicking, self).default_get(default_fields)
+        for i, k, vals in res.get('product_return_moves', []):
+            vals.update({'to_refund': True})
+        return res
+
     @api.multi
     def _create_returns(self):
         new_picking_id, pick_type_id = super(StockReturnPicking, self)._create_returns()
@@ -709,7 +737,7 @@ class StockReturnPicking(models.TransientModel):
 class StockReturnPickingLine(models.TransientModel):
     _inherit = "stock.return.picking.line"
 
-    to_refund = fields.Boolean(string="To Refund (update SO/PO)", help='Trigger a decrease of the delivered/received quantity in the associated Sale Order/Purchase Order')
+    to_refund = fields.Boolean(string="Update quantities on SO/PO", help='Trigger a decrease of the delivered/received quantity in the associated Sale Order/Purchase Order')
 
 
 class ProcurementGroup(models.Model):

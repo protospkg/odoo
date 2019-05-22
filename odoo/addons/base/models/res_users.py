@@ -21,7 +21,7 @@ from odoo.exceptions import AccessDenied, AccessError, UserError, ValidationErro
 from odoo.http import request
 from odoo.osv import expression
 from odoo.service.db import check_super
-from odoo.tools import partition, pycompat, collections
+from odoo.tools import partition, collections
 
 _logger = logging.getLogger(__name__)
 
@@ -107,10 +107,15 @@ class Groups(models.Model):
         ('name_uniq', 'unique (category_id, name)', 'The name of the group must be unique within an application!')
     ]
 
+    @api.multi
+    @api.constrains('users')
+    def _check_one_user_type(self):
+        self.users._check_one_user_type()
+
     @api.depends('category_id.name', 'name')
     def _compute_full_name(self):
         # Important: value must be stored in environment of group, not group1!
-        for group, group1 in pycompat.izip(self, self.sudo()):
+        for group, group1 in zip(self, self.sudo()):
             if group1.category_id:
                 group.full_name = '%s / %s' % (group1.category_id.name, group1.name)
             else:
@@ -124,7 +129,7 @@ class Groups(models.Model):
                 return expression.AND(domains)
             else:
                 return expression.OR(domains)
-        if isinstance(operand, pycompat.string_types):
+        if isinstance(operand, str):
             lst = False
             operand = [operand]
         where = []
@@ -224,32 +229,36 @@ class Users(models.Model):
              "a change of password, the user has to login again.")
     signature = fields.Html()
     active = fields.Boolean(default=True)
+    active_partner = fields.Boolean(related='partner_id.active', readonly=True, string="Partner is Active")
     action_id = fields.Many2one('ir.actions.actions', string='Home Action',
         help="If specified, this action will be opened at log on for this user, in addition to the standard menu.")
     groups_id = fields.Many2many('res.groups', 'res_groups_users_rel', 'uid', 'gid', string='Groups', default=_default_groups)
     log_ids = fields.One2many('res.users.log', 'create_uid', string='User log entries')
-    login_date = fields.Datetime(related='log_ids.create_date', string='Latest connection', readonly=False)
+    login_date = fields.Datetime(related='log_ids.create_date', string='Latest authentication', readonly=False)
     share = fields.Boolean(compute='_compute_share', compute_sudo=True, string='Share User', store=True,
          help="External user with limited access, created only for the purpose of sharing data.")
     companies_count = fields.Integer(compute='_compute_companies_count', string="Number of Companies", default=_companies_count)
     tz_offset = fields.Char(compute='_compute_tz_offset', string='Timezone offset', invisible=True)
 
-    @api.model
-    def _get_company(self):
-        return self.env.user.company_id
-
     # Special behavior for this field: res.company.search() will only return the companies
     # available to the current user (should be the user's companies?), when the user_preference
     # context is set.
-    company_id = fields.Many2one('res.company', string='Company', required=True, default=_get_company,
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.company_id.id,
         help='The company this user is currently working for.', context={'user_preference': True})
     company_ids = fields.Many2many('res.company', 'res_company_users_rel', 'user_id', 'cid',
-        string='Companies', default=_get_company)
+        string='Companies', default=lambda self: self.env.company_id.ids)
 
     # overridden inherited fields to bypass access rights, in case you have
     # access to the user but not its corresponding partner
     name = fields.Char(related='partner_id.name', inherited=True, readonly=False)
     email = fields.Char(related='partner_id.email', inherited=True, readonly=False)
+
+    accesses_count = fields.Integer('# Access Rights', help='Number of access rights that apply to the current user',
+                                    compute='_compute_accesses_count')
+    rules_count = fields.Integer('# Record Rules', help='Number of record rules that apply to the current user',
+                                 compute='_compute_accesses_count')
+    groups_count = fields.Integer('# Groups', help='Number of groups that apply to the current user',
+                                  compute='_compute_accesses_count')
 
     _sql_constraints = [
         ('login_key', 'UNIQUE (login)',  'You can not have two users with the same login !')
@@ -350,6 +359,14 @@ class Users(models.Model):
         for user in self:
             user.tz_offset = datetime.datetime.now(pytz.timezone(user.tz or 'GMT')).strftime('%z')
 
+    @api.depends('groups_id')
+    def _compute_accesses_count(self):
+        for user in self:
+            groups = user.groups_id
+            user.accesses_count = len(groups.model_access)
+            user.rules_count = len(groups.rule_groups)
+            user.groups_count = len(groups)
+
     @api.onchange('login')
     def on_change_login(self):
         if self.login and tools.single_email_re.match(self.login):
@@ -357,7 +374,7 @@ class Users(models.Model):
 
     @api.onchange('parent_id')
     def onchange_parent_id(self):
-        return self.mapped('partner_id').onchange_parent_id()
+        return self.partner_id.onchange_parent_id()
 
     def _read_from_database(self, field_names, inherited_field_names=[]):
         super(Users, self)._read_from_database(field_names, inherited_field_names)
@@ -386,6 +403,13 @@ class Users(models.Model):
             raise ValidationError(_('The "App Switcher" action cannot be selected as home action.'))
 
     @api.multi
+    @api.constrains('groups_id')
+    def _check_one_user_type(self):
+        for user in self:
+            if len(user.groups_id.filtered(lambda x: x.category_id.xml_id == 'base.module_category_user_type')) > 1:
+                raise ValidationError(_('The user cannot have more than one user types.'))
+
+    @api.multi
     def toggle_active(self):
         for user in self:
             if not user.active and not user.partner_id.active:
@@ -406,7 +430,7 @@ class Users(models.Model):
 
     @api.model
     def read_group(self, domain, fields, groupby, offset=0, limit=None, orderby=False, lazy=True):
-        groupby_fields = set([groupby] if isinstance(groupby, pycompat.string_types) else groupby)
+        groupby_fields = set([groupby] if isinstance(groupby, str) else groupby)
         if groupby_fields.intersection(USER_PRIVATE_FIELDS):
             raise AccessError(_("Invalid 'group by' parameter"))
         return super(Users, self).read_group(domain, fields, groupby, offset=offset, limit=limit, orderby=orderby, lazy=lazy)
@@ -488,13 +512,14 @@ class Users(models.Model):
 
     @api.model
     def _name_search(self, name, args=None, operator='ilike', limit=100, name_get_uid=None):
-        if args is None:
-            args = []
-        user_ids = []
-        if name and operator in ['=', 'ilike']:
-            user_ids = self._search([('login', '=', name)] + args, limit=limit, access_rights_uid=name_get_uid)
+        args = args or []
+        if operator == 'ilike' and not (name or '').strip():
+            domain = []
+        else:
+            domain = [('login', '=', name)]
+        user_ids = self._search(expression.AND([domain, args]), limit=limit, access_rights_uid=name_get_uid)
         if not user_ids:
-            user_ids = self._search([('name', operator, name)] + args, limit=limit, access_rights_uid=name_get_uid)
+            user_ids = self._search(expression.AND([[('name', operator, name)], args]), limit=limit, access_rights_uid=name_get_uid)
         return self.browse(user_ids).name_get()
 
     @api.multi
@@ -526,9 +551,8 @@ class Users(models.Model):
         }
 
     @api.model
-    @api.returns('ir.actions.act_window', lambda record: record.id)
     def action_get(self):
-        return self.sudo().env.ref('base.action_res_users_my')
+        return self.sudo().env.ref('base.action_res_users_my').read()[0]
 
     def check_super(self, passwd):
         return check_super(passwd)
@@ -689,7 +713,7 @@ class Users(models.Model):
         :return: True if the current user is a member of the group with the
            given external ID (XML ID), else False.
         """
-        assert group_ext_id and '.' in group_ext_id, "External ID must be fully qualified"
+        assert group_ext_id and '.' in group_ext_id, "External ID '%s' must be fully qualified" % group_ext_id
         module, ext_id = group_ext_id.split('.')
         self._cr.execute("""SELECT 1 FROM res_groups_users_rel WHERE uid=%s AND gid IN
                             (SELECT res_id FROM ir_model_data WHERE module=%s AND name=%s)""",
@@ -697,6 +721,45 @@ class Users(models.Model):
         return bool(self._cr.fetchone())
     # for a few places explicitly clearing the has_group cache
     has_group.clear_cache = _has_group.clear_cache
+
+    def action_show_groups(self):
+        self.ensure_one()
+        return {
+            'name': _('Groups'),
+            'view_type': 'form',
+            'view_mode': 'tree,form',
+            'res_model': 'res.groups',
+            'type': 'ir.actions.act_window',
+            'context': {'create': False, 'delete': False},
+            'domain': [('id','in', self.groups_id.ids)],
+            'target': 'current',
+        }
+
+    def action_show_accesses(self):
+        self.ensure_one()
+        return {
+            'name': _('Access Rights'),
+            'view_type': 'form',
+            'view_mode': 'tree,form',
+            'res_model': 'ir.model.access',
+            'type': 'ir.actions.act_window',
+            'context': {'create': False, 'delete': False},
+            'domain': [('id', 'in', self.groups_id.model_access.ids)],
+            'target': 'current',
+        }
+
+    def action_show_rules(self):
+        self.ensure_one()
+        return {
+            'name': _('Record Rules'),
+            'view_type': 'form',
+            'view_mode': 'tree,form',
+            'res_model': 'ir.rule',
+            'type': 'ir.actions.act_window',
+            'context': {'create': False, 'delete': False},
+            'domain': [('id', 'in', self.groups_id.rule_groups.ids)],
+            'target': 'current',
+        }
 
     @api.multi
     def _is_public(self):
@@ -720,7 +783,7 @@ class Users(models.Model):
 
     @api.model
     def get_company_currency_id(self):
-        return self.env.user.company_id.currency_id.id
+        return self.env.company_id.currency_id.id
 
     def _crypt_context(self):
         """ Passlib CryptContext instance used to encrypt and verify
@@ -850,13 +913,13 @@ class GroupsImplied(models.Model):
         # is good, because the record cache behaves as a memo (the field is
         # never computed twice on a given group.)
         for g in self:
-            g.trans_implied_ids = g.implied_ids | g.mapped('implied_ids.trans_implied_ids')
+            g.trans_implied_ids = g.implied_ids | g.implied_ids.trans_implied_ids
 
     @api.model_create_multi
     def create(self, vals_list):
         user_ids_list = [vals.pop('users', None) for vals in vals_list]
         groups = super(GroupsImplied, self).create(vals_list)
-        for group, user_ids in pycompat.izip(groups, user_ids_list):
+        for group, user_ids in zip(groups, user_ids_list):
             if user_ids:
                 # delegate addition of users to add implied groups
                 group.write({'users': user_ids})
@@ -899,7 +962,14 @@ class UsersImplied(models.Model):
             if 'groups_id' in values:
                 # complete 'groups_id' with implied groups
                 user = self.new(values)
-                gs = user.groups_id | user.groups_id.mapped('trans_implied_ids')
+                group_public = self.env.ref('base.group_public', raise_if_not_found=False)
+                group_portal = self.env.ref('base.group_portal', raise_if_not_found=False)
+                if group_public and group_public in user.groups_id:
+                    gs = self.env.ref('base.group_public') | self.env.ref('base.group_public').trans_implied_ids
+                elif group_portal and group_portal in user.groups_id:
+                    gs = self.env.ref('base.group_portal') | self.env.ref('base.group_portal').trans_implied_ids
+                else:
+                    gs = user.groups_id | user.groups_id.trans_implied_ids
                 values['groups_id'] = type(self).groups_id.convert_to_write(gs, user.groups_id)
         return super(UsersImplied, self).create(vals_list)
 
@@ -908,12 +978,12 @@ class UsersImplied(models.Model):
         res = super(UsersImplied, self).write(values)
         if values.get('groups_id'):
             # add implied groups for all users
-            for user in self.with_context({}):
+            for user in self:
                 if not user.has_group('base.group_user'):
                     vals = {'groups_id': [(5, 0, 0)] + values['groups_id']}
-                else:
-                    gs = set(concat(g.trans_implied_ids for g in user.groups_id))
-                    vals = {'groups_id': [(4, g.id) for g in gs]}
+                    super(UsersImplied, user).write(vals)
+                gs = set(concat(g.trans_implied_ids for g in user.groups_id))
+                vals = {'groups_id': [(4, g.id) for g in gs]}
                 super(UsersImplied, user).write(vals)
         return res
 
@@ -966,6 +1036,9 @@ class GroupsView(models.Model):
         self.env['ir.actions.actions'].clear_caches()
         return res
 
+    def _get_hidden_extra_categories(self):
+        return ['base.module_category_hidden', 'base.module_category_extra', 'base.module_category_usability']
+
     @api.model
     def _update_user_groups_view(self):
         """ Modify the view with xmlid ``base.user_groups_view``, which inherits
@@ -983,14 +1056,14 @@ class GroupsView(models.Model):
             group_no_one = view.env.ref('base.group_no_one')
             group_employee = view.env.ref('base.group_user')
             xml1, xml2, xml3 = [], [], []
+            xml_by_category = {}
             xml1.append(E.separator(string=_('User Type'), colspan="2", groups='base.group_no_one'))
-            xml2.append(E.separator(string=_('Application Accesses'), colspan="2"))
 
             user_type_field_name = ''
-            for app, kind, gs in self.get_groups_by_application():
+            for app, kind, gs, category_name in self.get_groups_by_application():
                 attrs = {}
                 # hide groups in categories 'Hidden' and 'Extra' (except for group_no_one)
-                if app.xml_id in ('base.module_category_hidden', 'base.module_category_extra', 'base.module_category_usability'):
+                if app.xml_id in self._get_hidden_extra_categories():
                     attrs['groups'] = 'base.group_no_one'
 
                 # User type (employee, portal or public) is a separated group. This is the only 'selection'
@@ -1007,8 +1080,12 @@ class GroupsView(models.Model):
                 elif kind == 'selection':
                     # application name with a selection field
                     field_name = name_selection_groups(gs.ids)
-                    xml2.append(E.field(name=field_name, **attrs))
-                    xml2.append(E.newline())
+                    if category_name not in xml_by_category:
+                        xml_by_category[category_name] = []
+                        xml_by_category[category_name].append(E.newline())
+                    xml_by_category[category_name].append(E.field(name=field_name, **attrs))
+                    xml_by_category[category_name].append(E.newline())
+
                 else:
                     # application separator with boolean fields
                     app_name = app.name or _('Other')
@@ -1026,6 +1103,11 @@ class GroupsView(models.Model):
                 user_type_attrs = {'invisible': [(user_type_field_name, '!=', group_employee.id)]}
             else:
                 user_type_attrs = {}
+
+            for xml_cat in sorted(xml_by_category.keys(), key=lambda it: it[0]):
+                xml_cat_name = xml_cat[1]
+                master_category_name = (_(xml_cat_name))
+                xml2.append(E.group(*(xml_by_category[xml_cat]), col="2", string=master_category_name))
 
             xml = E.field(
                 E.group(*(xml1), col="2"),
@@ -1054,17 +1136,17 @@ class GroupsView(models.Model):
             order.  If ``kind`` is ``'selection'``, ``groups`` are given in
             reverse implication order.
         """
-        def linearize(app, gs):
+        def linearize(app, gs, category_name):
             # 'User Type' is an exception
             if app.xml_id == 'base.module_category_user_type':
-                return (app, 'selection', gs.sorted('id'))
+                return (app, 'selection', gs.sorted('id'), category_name)
             # determine sequence order: a group appears after its implied groups
             order = {g: len(g.trans_implied_ids & gs) for g in gs}
             # check whether order is total, i.e., sequence orders are distinct
             if len(set(order.values())) == len(gs):
-                return (app, 'selection', gs.sorted(key=order.get))
+                return (app, 'selection', gs.sorted(key=order.get), category_name)
             else:
-                return (app, 'boolean', gs)
+                return (app, 'boolean', gs, (100, 'Other'))
 
         # classify all groups by application
         by_app, others = defaultdict(self.browse), self.browse()
@@ -1076,9 +1158,13 @@ class GroupsView(models.Model):
         # build the result
         res = []
         for app, gs in sorted(by_app.items(), key=lambda it: it[0].sequence or 0):
-            res.append(linearize(app, gs))
+            if app.parent_id:
+                res.append(linearize(app, gs, (app.parent_id.sequence, app.parent_id.name)))
+            else:
+                res.append(linearize(app, gs, (100, 'Other')))
+
         if others:
-            res.append((self.env['ir.module.category'], 'boolean', others))
+            res.append((self.env['ir.module.category'], 'boolean', others, (100,'Other')))
         return res
 
 
@@ -1128,8 +1214,8 @@ class UsersView(models.Model):
         if 'groups_id' not in values and (add or rem):
             # remove group ids in `rem` and add group ids in `add`
             values1['groups_id'] = list(itertools.chain(
-                pycompat.izip(repeat(3), rem),
-                pycompat.izip(repeat(4), add)
+                zip(repeat(3), rem),
+                zip(repeat(4), add)
             ))
 
         return values1
@@ -1175,13 +1261,18 @@ class UsersView(models.Model):
                 values[f] = get_boolean_group(f) in gids
             elif is_selection_groups(f):
                 selected = [gid for gid in get_selection_groups(f) if gid in gids]
-                values[f] = selected and selected[-1] or False
+                # if 'Internal User' is in the group, this is the "User Type" group
+                # and we need to show 'Internal User' selected, not Public/Portal.
+                if self.env.ref('base.group_user').id in selected:
+                    values[f] = self.env.ref('base.group_user').id
+                else:
+                    values[f] = selected and selected[-1] or False
 
     @api.model
     def fields_get(self, allfields=None, attributes=None):
         res = super(UsersView, self).fields_get(allfields, attributes=attributes)
         # add reified groups fields
-        for app, kind, gs in self.env['res.groups'].sudo().get_groups_by_application():
+        for app, kind, gs, category_name in self.env['res.groups'].sudo().get_groups_by_application():
             if kind == 'selection':
                 # 'User Type' should not be 'False'. A user is either 'employee', 'portal' or 'public' (required).
                 selection_vals = [(False, '')]
@@ -1237,7 +1328,7 @@ class ChangePasswordWizard(models.TransientModel):
     def change_password_button(self):
         self.ensure_one()
         self.user_ids.change_password_button()
-        if self.env.user in self.mapped('user_ids.user_id'):
+        if self.env.user in self.user_ids.user_id:
             return {'type': 'ir.actions.client', 'tag': 'reload'}
         return {'type': 'ir.actions.act_window_close'}
 

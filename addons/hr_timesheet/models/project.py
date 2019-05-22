@@ -8,10 +8,10 @@ from odoo.exceptions import UserError, ValidationError
 class Project(models.Model):
     _inherit = "project.project"
 
-    allow_timesheets = fields.Boolean("Allow timesheets", default=True)
+    allow_timesheets = fields.Boolean("Allow timesheets", default=True, help="Enable timesheeting on the project.")
     analytic_account_id = fields.Many2one('account.analytic.account', string="Analytic Account", copy=False, ondelete='set null',
-        help="Link this project to an analytic account if you need financial management on projects. "
-             "It enables you to connect projects with budgets, planning, cost and revenue analysis, timesheets on projects, etc.")
+        help="Analytic account to which this project is linked for financial management."
+             "Use an analytic account to record cost and revenue on your project.")
 
     @api.onchange('partner_id')
     def _onchange_partner_id(self):
@@ -49,7 +49,7 @@ class Project(models.Model):
         if allow_timesheets and not values.get('analytic_account_id'):
             analytic_account = self.env['account.analytic.account'].create({
                 'name': values.get('name', _('Unknown Analytic Account')),
-                'company_id': values.get('company_id', self.env.user.company_id.id),
+                'company_id': values.get('company_id', self.env.company_id.id),
                 'partner_id': values.get('partner_id'),
                 'active': True,
             })
@@ -144,7 +144,7 @@ class Task(models.Model):
     def write(self, values):
         # a timesheet must have an analytic account (and a project)
         if 'project_id' in values and self and not values.get('project_id'):
-                raise UserError(_('This task must be part of a project because they some timesheets are linked to it.'))
+                raise UserError(_('This task must be part of a project because there are some timesheets linked to it.'))
         return super(Task, self).write(values)
 
     @api.model

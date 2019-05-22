@@ -60,10 +60,11 @@ return AbstractModel.extend({
             end.add(-1, 'days');
         }
 
+        var isDateEvent = this.fields[this.mapping.date_start].type === 'date';
         // An "allDay" event without the "all_day" option is not considered
         // as a 24h day. It's just a part of the day (by default: 7h-19h).
         if (event.allDay) {
-            if (!this.mapping.all_day) {
+            if (!this.mapping.all_day && !isDateEvent) {
                 if (event.r_start) {
                     start.hours(event.r_start.hours())
                          .minutes(event.r_start.minutes())
@@ -75,9 +76,11 @@ return AbstractModel.extend({
                        .utc();
                 } else {
                     // default hours in the user's timezone
-                    start.hours(7).add(-this.getSession().getTZOffset(start), 'minutes');
-                    end.hours(19).add(-this.getSession().getTZOffset(end), 'minutes');
+                    start.hours(7);
+                    end.hours(19);
                 }
+                start.add(-this.getSession().getTZOffset(start), 'minutes');
+                end.add(-this.getSession().getTZOffset(end), 'minutes');
             }
         } else {
             start.add(-this.getSession().getTZOffset(start), 'minutes');
@@ -102,7 +105,9 @@ return AbstractModel.extend({
         }
 
         if (this.mapping.date_delay) {
-            data[this.mapping.date_delay] = (end.diff(start) <= 0 ? end.endOf('day').diff(start) : end.diff(start)) / 1000 / 3600;
+            if (this.data.scale !== 'month' || (this.data.scale === 'month' && !event.drop)) {
+                data[this.mapping.date_delay] = (end.diff(start) <= 0 ? end.endOf('day').diff(start) : end.diff(start)) / 1000 / 3600;
+            }
         }
 
         return data;
@@ -177,7 +182,7 @@ return AbstractModel.extend({
     /**
      * @override
      * @param {any} params
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     load: function (params) {
         var self = this;
@@ -199,15 +204,18 @@ return AbstractModel.extend({
 
         // fields to display color, e.g.: user_id.partner_id
         this.fieldColor = params.fieldColor;
-        if (!this.preload_def) {
-            this.preload_def = $.Deferred();
-            $.when(
-                this._rpc({model: this.modelName, method: 'check_access_rights', args: ["write", false]}),
-                this._rpc({model: this.modelName, method: 'check_access_rights', args: ["create", false]}))
-            .then(function (write, create) {
-                self.write_right = write;
-                self.create_right = create;
-                self.preload_def.resolve();
+        if (!this.preloadPromise) {
+            this.preloadPromise = new Promise(function (resolve, reject) {
+                Promise.all([
+                    self._rpc({model: self.modelName, method: 'check_access_rights', args: ["write", false]}),
+                    self._rpc({model: self.modelName, method: 'check_access_rights', args: ["create", false]})
+                ]).then(function (result) {
+                    var write = result[0];
+                    var create = result[1];
+                    self.write_right = write;
+                    self.create_right = create;
+                    resolve();
+                }).guardedCatch(reject);
             });
         }
 
@@ -229,7 +237,7 @@ return AbstractModel.extend({
             }
         });
 
-        return this.preload_def.then(this._loadCalendar.bind(this));
+        return this.preloadPromise.then(this._loadCalendar.bind(this));
     },
     /**
      * Move the current date range to the next period
@@ -247,7 +255,7 @@ return AbstractModel.extend({
      * @override
      * @param {Object} [params.context]
      * @param {Array} [params.domain]
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     reload: function (handle, params) {
         if (params.domain) {
@@ -308,7 +316,7 @@ return AbstractModel.extend({
     /**
      * @param {Object} record
      * @param {integer} record.id
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     updateRecord: function (record) {
         // Cannot modify actual name yet
@@ -430,7 +438,7 @@ return AbstractModel.extend({
     },
     /**
      * @private
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     _loadCalendar: function () {
         var self = this;
@@ -439,7 +447,7 @@ return AbstractModel.extend({
 
         var defs = _.map(this.data.filters, this._loadFilter.bind(this));
 
-        return $.when.apply($, defs).then(function () {
+        return Promise.all(defs).then(function () {
             return self._rpc({
                     model: self.modelName,
                     method: 'search_read',
@@ -450,10 +458,10 @@ return AbstractModel.extend({
             .then(function (events) {
                 self._parseServerData(events);
                 self.data.data = _.map(events, self._recordToCalendarEvent.bind(self));
-                return $.when(
+                return Promise.all([
                     self._loadColors(self.data, self.data.data),
                     self._loadRecordsToFilters(self.data, self.data.data)
-                );
+                ]);
             });
         });
     },
@@ -461,7 +469,7 @@ return AbstractModel.extend({
      * @private
      * @param {any} element
      * @param {any} events
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     _loadColors: function (element, events) {
         if (this.fieldColor) {
@@ -472,16 +480,16 @@ return AbstractModel.extend({
             });
             this.model_color = this.fields[fieldName].relation || element.model;
         }
-        return $.Deferred().resolve();
+        return Promise.resolve();
     },
     /**
      * @private
      * @param {any} filter
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     _loadFilter: function (filter) {
         if (!filter.write_model) {
-            return;
+            return Promise.resolve();
         }
 
         var field = this.fields[filter.fieldName];
@@ -540,7 +548,7 @@ return AbstractModel.extend({
      * @private
      * @param {any} element
      * @param {any} events
-     * @returns {Deferred}
+     * @returns {Promise}
      */
     _loadRecordsToFilters: function (element, events) {
         var self = this;
@@ -608,7 +616,7 @@ return AbstractModel.extend({
                     to_read[model] = _.object(res);
                 }));
         });
-        return $.when.apply($, defs).then(function () {
+        return Promise.all(defs).then(function () {
             _.each(self.data.filters, function (filter) {
                 if (filter.write_model) {
                     return;
